@@ -1,0 +1,12 @@
+首先安装dotnet 6.0版本
+https://dotnet.microsoft.com/en-us/download/dotnet/6.0
+
+编译
+dotnet clean
+dotnet restore
+dotnet build
+
+运行
+dotnet run --project src/4_Shell/DHDAS.App.Shell/DHDAS.App.Shell.csproj
+dotnet run --project src/4_Shell/DHDAS.App.Shell/DHDAS.App.Shell.csproj -no-build
+
