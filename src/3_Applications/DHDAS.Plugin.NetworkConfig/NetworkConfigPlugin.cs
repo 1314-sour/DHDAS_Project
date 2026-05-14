@@ -68,6 +68,20 @@ public class NetworkConfigPlugin : PluginBase
 
             panel.Children.Add(addRouteButton);
 
+            var generateBtn = new Button { Content = "生成测试正弦波 (CH0)" };
+            generateBtn.Click += (s, e) => vm.GenerateWaveform();
+
+            var sendBtn = new Button { Content = "发送当前波形" };
+            sendBtn.Click += (s, e) => vm.SendOnce();
+
+            var waveformButtons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Children = { generateBtn, sendBtn }
+            };
+            panel.Children.Add(waveformButtons);
+
             panel.Children.Add(new TextBlock { Text = "当前路由表", FontWeight = Avalonia.Media.FontWeight.Bold });
             panel.Children.Add(new ListBox
             {
@@ -97,15 +111,6 @@ public class NetworkConfigPlugin : PluginBase
                 MinHeight = 80,
                 MaxHeight = 140
             });
-
-            var generateBtn = new Button { Content = "生成测试正弦波 (CH0)" };
-            generateBtn.Click += (s, e) => vm.GenerateWaveform();
-
-            var sendBtn = new Button { Content = "发送当前波形" };
-            sendBtn.Click += (s, e) => vm.SendOnce();
-
-            panel.Children.Add(generateBtn);
-            panel.Children.Add(sendBtn);
         }
         else
         {
@@ -118,7 +123,7 @@ public class NetworkConfigPlugin : PluginBase
 
         panel.DataContext = vm;
         vm.OnActivated();
-        return panel;
+        return new ScrollViewer { Content = panel };
     }
 
     private static void AddCell(Grid grid, string text, int row, int column)
