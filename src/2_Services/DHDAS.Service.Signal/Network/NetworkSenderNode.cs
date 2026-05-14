@@ -176,6 +176,18 @@ public class NetworkSenderNode : BasePipelineNode, INetworkService
         return true; // 继续流向本地下一节点
     }
 
+    protected override async Task RunAsSourceAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // 正常停止
+        }
+    }
+
     private void EnqueuePacket(RefCountBuffer<RawDataPacket> refBuffer, bool reportNoRoute)
     {
         var packet = refBuffer.Data;
@@ -204,7 +216,7 @@ public class NetworkSenderNode : BasePipelineNode, INetworkService
             if (!_sendQueue.Writer.TryWrite(new QueuedNetworkPacket(route, refBuffer)))
             {
                 refBuffer.Dispose();
-                MarkFailure(route, "发送队列已满");
+                MarkFailure(route, "发送队列不可用，请确认发送端后台节点仍在运行");
             }
         }
     }
