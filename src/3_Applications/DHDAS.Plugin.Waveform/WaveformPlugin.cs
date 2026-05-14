@@ -33,7 +33,7 @@ public class WaveformPlugin : PluginBase
 
         var plot = new WaveformPlotControl
         {
-            Height = 260,
+            Height = 340,
             HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch
         };
         plot.Bind(WaveformPlotControl.SamplesProperty, new Avalonia.Data.Binding("Samples"));

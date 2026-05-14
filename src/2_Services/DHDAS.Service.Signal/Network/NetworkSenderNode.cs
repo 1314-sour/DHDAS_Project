@@ -41,8 +41,8 @@ public class NetworkSenderNode : BasePipelineNode
     public void SendTestSinePacket(int channelId)
     {
         const int sampleRate = 1000;
-        const int batchSize = 100;
-        const double frequency = 2;
+        const int batchSize = 1000;
+        const double frequency = 5;
 
         var data = new double[batchSize];
         for (int i = 0; i < batchSize; i++)
