@@ -23,6 +23,7 @@ public class NetworkConfigViewModel : PluginViewModelBase
     public bool IsReceiver => _runtimeOptions.IsReceiver;
     public string RoleText => _runtimeOptions.IsSender ? "发送端模式" : "接收端模式";
     public string ReceiverText => "接收端正在等待发送端数据，收到后会弹窗展示通道、长度和采样值预览。";
+    public double[] TestSamples { get; } = BuildTestSineSamples();
 
     public NetworkConfigViewModel(
         NetworkSenderNode senderNode,
@@ -45,5 +46,20 @@ public class NetworkConfigViewModel : PluginViewModelBase
     public void SendOnce()
     {
         _senderNode.SendTestSinePacket(InputChannel);
+    }
+
+    private static double[] BuildTestSineSamples()
+    {
+        const int sampleRate = 1000;
+        const int batchSize = 100;
+        const double frequency = 2;
+
+        var data = new double[batchSize];
+        for (int i = 0; i < batchSize; i++)
+        {
+            data[i] = Math.Sin(2 * Math.PI * frequency * i / sampleRate);
+        }
+
+        return data;
     }
 }

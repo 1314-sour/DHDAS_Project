@@ -43,6 +43,7 @@ class Program
                 // --- A. 基础设施注册 ---
                 services.AddSingleton<SessionManager>();
                 services.AddSingleton<IDistributedFeedbackService, DistributedFeedbackService>();
+                services.AddSingleton<IWaveformSnapshotService, WaveformSnapshotService>();
                 services.AddSingleton(new DistributedRuntimeOptions
                 {
                     Role = role,

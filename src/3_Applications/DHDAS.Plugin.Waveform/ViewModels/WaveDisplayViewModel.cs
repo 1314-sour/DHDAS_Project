@@ -1,20 +1,16 @@
 using System;
-using System.Reactive.Linq;
 using Avalonia.Threading;
 using ReactiveUI;
-// using ReactiveUI.Fody.Helpers;
 using System.Reactive.Disposables;
 using DHDAS.Application.Support;
 using DHDAS.Contracts.Services;
-using DHDAS.Contracts.Memory;
 using DHDAS.Contracts.Models;
-using Avalonia.ReactiveUI;
 
 namespace DHDAS.Plugin.Waveform.ViewModels;
 
 public class WaveformViewModel : PluginViewModelBase
 {
-    private readonly IDataPushService _pushService;
+    private readonly IWaveformSnapshotService _snapshotService;
 
     private string _displayData = "等待数据...";
     public string DisplayData
@@ -23,30 +19,27 @@ public class WaveformViewModel : PluginViewModelBase
         set => this.RaiseAndSetIfChanged(ref _displayData, value);
     }
 
-    public WaveformViewModel(IDataPushService pushService)
+    private double[] _samples = Array.Empty<double>();
+    public double[] Samples
     {
-        _pushService = pushService;
+        get => _samples;
+        set => this.RaiseAndSetIfChanged(ref _samples, value);
+    }
+
+    public WaveformViewModel(IWaveformSnapshotService snapshotService)
+    {
+        _snapshotService = snapshotService;
     }
 
     public override void OnActivated()
     {
-        Console.WriteLine(">>> 插件：数据订阅通道已开启");
-
-        _pushService.OnRawDataReceived
-            .Subscribe(refBuffer =>
+        _snapshotService.Subscribe(snapshot =>
             {
-                using (refBuffer)
+                Dispatcher.UIThread.Post(() =>
                 {
-                    if (refBuffer.Data.Data != null && refBuffer.Data.ChannelId == 0)
-                    {
-                        var val = Math.Round(refBuffer.Data.Data[0], 3);
-
-                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                        {
-                            DisplayData = $"通道0 实时值: {val}";
-                        });
-                    }
-                }
+                    Samples = snapshot.Samples;
+                    DisplayData = $"通道 {snapshot.ChannelId} | 长度 {snapshot.ActualLength} | 最新接收波形";
+                });
             })
             .DisposeWith(Disposables);
     }

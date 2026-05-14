@@ -15,12 +15,17 @@ public class NetworkReceiverNode : BasePipelineNode
     public override string NodeId => nameof(NetworkReceiverNode);
     private readonly SessionManager _sessionManager;
     private readonly IDistributedFeedbackService _feedbackService;
+    private readonly IWaveformSnapshotService _waveformSnapshotService;
     private TcpListener? _listener;
 
-    public NetworkReceiverNode(SessionManager sessionManager, IDistributedFeedbackService feedbackService)
+    public NetworkReceiverNode(
+        SessionManager sessionManager,
+        IDistributedFeedbackService feedbackService,
+        IWaveformSnapshotService waveformSnapshotService)
     {
         _sessionManager = sessionManager;
         _feedbackService = feedbackService;
+        _waveformSnapshotService = waveformSnapshotService;
     }
 
     protected override async Task RunAsSourceAsync(CancellationToken ct)
@@ -88,6 +93,14 @@ public class NetworkReceiverNode : BasePipelineNode
 
                 if (acceptedByPipeline)
                 {
+                    _waveformSnapshotService.Publish(new WaveformSnapshot
+                    {
+                        ChannelId = rawPacket.ChannelId,
+                        Timestamp = rawPacket.Timestamp,
+                        Samples = rawPacket.Data.Take(rawPacket.ActualLength).ToArray(),
+                        ActualLength = rawPacket.ActualLength
+                    });
+
                     _feedbackService.Publish(
                         "接收端收到数据",
                         BuildReceivedPreview(rawPacket),

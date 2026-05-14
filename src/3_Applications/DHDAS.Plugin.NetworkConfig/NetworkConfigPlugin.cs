@@ -4,6 +4,7 @@ using Avalonia.Controls; // 解决 Control 找不到的问题
 using Avalonia.Layout;
 using Microsoft.Extensions.DependencyInjection;
 using DHDAS.Application.Support;
+using DHDAS.Plugin.NetworkConfig.Controls;
 using DHDAS.Plugin.NetworkConfig.ViewModels;
 
 namespace DHDAS.Plugin.NetworkConfig;
@@ -29,6 +30,20 @@ public class NetworkConfigPlugin : PluginBase
 
         if (vm.IsSender)
         {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "待发送的模拟正弦波数据预览",
+                Foreground = Avalonia.Media.Brushes.White
+            });
+
+            var preview = new SinePreviewControl
+            {
+                Height = 180,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch
+            };
+            preview.Bind(SinePreviewControl.SamplesProperty, new Avalonia.Data.Binding("TestSamples"));
+            panel.Children.Add(preview);
+
             var btn = new Button { Content = "添加本地回环路由 (CH0 -> 127.0.0.1)" };
             btn.Click += (s, e) => vm.AddRoute();
 

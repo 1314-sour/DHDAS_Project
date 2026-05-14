@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using DHDAS.Application.Support;
 using DHDAS.Plugin.Waveform.ViewModels;
 using Avalonia; // 必须引用这个
+using DHDAS.Plugin.Waveform.Controls;
 
 namespace DHDAS.Plugin.Waveform;
 
@@ -17,23 +18,33 @@ public class WaveformPlugin : PluginBase
         // 1. 创建 ViewModel (自动注入 IDataPushService)
         var viewModel = ActivatorUtilities.CreateInstance<WaveformViewModel>(sp);
 
-        // 2. 创建一个简单的文本显示界面
-        var view = new TextBlock
+        var panel = new StackPanel
         {
-            FontSize = 24,
-            Foreground = Avalonia.Media.Brushes.LimeGreen,
-            Margin = new Avalonia.Thickness(20),
-            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
-            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+            Spacing = 12,
+            Margin = new Thickness(20)
         };
 
-        // 3. 绑定数据
-        view.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding("DisplayData"));
+        var title = new TextBlock
+        {
+            FontSize = 18,
+            Foreground = Avalonia.Media.Brushes.White
+        };
+        title.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding("DisplayData"));
+
+        var plot = new WaveformPlotControl
+        {
+            Height = 260,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch
+        };
+        plot.Bind(WaveformPlotControl.SamplesProperty, new Avalonia.Data.Binding("Samples"));
+
+        panel.Children.Add(title);
+        panel.Children.Add(plot);
 
         // 4. 设置上下文并激活
-        view.DataContext = viewModel;
+        panel.DataContext = viewModel;
         viewModel.OnActivated();
 
-        return view;
+        return panel;
     }
 }
