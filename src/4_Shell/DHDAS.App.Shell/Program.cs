@@ -60,17 +60,7 @@ class Program
 
                 // --- C. 业务节点注册 (关键：双重身份绑定) ---
 
-                // 注册发送节点
-                services.AddSingleton<NetworkSenderNode>();
-                services.AddSingleton<IPipelineNode>(sp => sp.GetRequiredService<NetworkSenderNode>());
-                if (pipelineScheme.Contains(nameof(NetworkSenderNode)))
-                    services.AddHostedService(sp => sp.GetRequiredService<NetworkSenderNode>());
-
-                // 注册接收节点
-                services.AddSingleton<NetworkReceiverNode>();
-                services.AddSingleton<IPipelineNode>(sp => sp.GetRequiredService<NetworkReceiverNode>());
-                if (pipelineScheme.Contains(nameof(NetworkReceiverNode)))
-                    services.AddHostedService(sp => sp.GetRequiredService<NetworkReceiverNode>());
+                services.AddDistributionModule(pipelineScheme);
 
                 services.AddSingleton<DHDAS.Application.Support.IMessenger, DHDAS.Application.Support.AppMessenger>();
 
@@ -119,8 +109,8 @@ class Program
 
         if (role == "sender")
         {
-            var sender = host.Services.GetRequiredService<NetworkSenderNode>();
-            sender.UpdateConfig(new[] { new NetworkRoute(channelId, targetIp, targetPort) });
+            var sender = host.Services.GetRequiredService<INetworkService>();
+            sender.UpdateRoutingTable(new List<NetworkRoute> { new("本地回环节点", targetIp, targetPort, channelId, channelId) });
             Console.WriteLine($"[网络] 默认测试路由: 通道 {channelId} -> {targetIp}:{targetPort}");
         }
 

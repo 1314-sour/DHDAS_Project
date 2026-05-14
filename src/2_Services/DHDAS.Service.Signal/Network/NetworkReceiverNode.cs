@@ -7,6 +7,7 @@ using DHDAS.Contracts.Memory;
 using DHDAS.Contracts.Services;
 using DHDAS.Infrastructure.Core.Session;
 using DHDAS.Service.Signal.Common;
+using Microsoft.Extensions.Logging;
 
 namespace DHDAS.Service.Signal.Network;
 
@@ -16,22 +17,26 @@ public class NetworkReceiverNode : BasePipelineNode
     private readonly SessionManager _sessionManager;
     private readonly IDistributedFeedbackService _feedbackService;
     private readonly IWaveformSnapshotService _waveformSnapshotService;
+    private readonly ILogger<NetworkReceiverNode> _logger;
     private TcpListener? _listener;
 
     public NetworkReceiverNode(
         SessionManager sessionManager,
         IDistributedFeedbackService feedbackService,
-        IWaveformSnapshotService waveformSnapshotService)
+        IWaveformSnapshotService waveformSnapshotService,
+        ILogger<NetworkReceiverNode> logger)
     {
         _sessionManager = sessionManager;
         _feedbackService = feedbackService;
         _waveformSnapshotService = waveformSnapshotService;
+        _logger = logger;
     }
 
     protected override async Task RunAsSourceAsync(CancellationToken ct)
     {
         _listener = new TcpListener(IPAddress.Any, 5000);
         _listener.Start();
+        _logger.LogInformation("网络接收节点已启动监听端口 {Port}", 5000);
         _feedbackService.Publish("接收端已启动", "正在监听 5000 端口", "Success");
 
         try
@@ -74,6 +79,7 @@ public class NetworkReceiverNode : BasePipelineNode
                     ChannelId = netPacket.ChannelId,
                     Data = poolArray,
                     ActualLength = netPacket.ActualLength,
+                    SampleRate = netPacket.SampleRate,
                     Timestamp = netPacket.Timestamp
                 };
 
@@ -105,6 +111,7 @@ public class NetworkReceiverNode : BasePipelineNode
                         "接收端收到数据",
                         BuildReceivedPreview(rawPacket),
                         "Success");
+                    _logger.LogInformation("接收网络数据成功: Channel={ChannelId}, Length={Length}", rawPacket.ChannelId, rawPacket.ActualLength);
 
                     await SendAckAsync(stream, true, netPacket, "OK", ct);
                 }
@@ -119,6 +126,7 @@ public class NetworkReceiverNode : BasePipelineNode
             }
             catch (Exception ex)
             {
+                _logger.LogWarning(ex, "接收网络数据异常");
                 _feedbackService.Publish("接收异常", ex.Message, "Error");
                 break;
             }
