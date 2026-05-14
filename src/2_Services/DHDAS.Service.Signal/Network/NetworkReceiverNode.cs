@@ -38,11 +38,16 @@ public class NetworkReceiverNode : BasePipelineNode
         using var stream = client.GetStream();
         while (!ct.IsCancellationRequested && client.Connected)
         {
-            Console.WriteLine("[网络] 收到新连接，准备接收数据...");
             try
             {
                 // 反序列化接收
                 var netPacket = await MessagePackSerializer.DeserializeAsync<NetworkDataPacket>(stream);
+
+                if (netPacket.Data.Length < netPacket.ActualLength)
+                {
+                    await SendAckAsync(stream, false, netPacket, "数据长度小于有效长度", ct);
+                    continue;
+                }
 
                 // 还原 RefCountBuffer
                 var session = _sessionManager.GetSession(netPacket.ChannelId);
@@ -60,21 +65,50 @@ public class NetworkReceiverNode : BasePipelineNode
                 var refBuffer = new RefCountBuffer<RawDataPacket>(rawPacket, p => session.Return(p.Data));
                 refBuffer.Retain(); // 初始计数
                 Console.WriteLine($"[网络] 成功接收数据包: 通道 {rawPacket.ChannelId}, 长度 {rawPacket.ActualLength}");
+                var acceptedByPipeline = true;
                 if (_outputPipe != null)
                 {
                     refBuffer.Retain(); // 给管道
-                    if (!_outputPipe.TryWrite(refBuffer)) refBuffer.Dispose();
+                    if (!_outputPipe.TryWrite(refBuffer))
+                    {
+                        refBuffer.Dispose();
+                        acceptedByPipeline = false;
+                    }
                 }
                 refBuffer.Dispose(); // 本函数释放
+
+                if (acceptedByPipeline)
+                {
+                    await SendAckAsync(stream, true, netPacket, "OK", ct);
+                }
+                else
+                {
+                    await SendAckAsync(stream, false, netPacket, "接收端本机管道繁忙", ct);
+                }
             }
-            catch
+            catch (Exception ex)
             {
-                Console.WriteLine("[网络] 接收数据包时发生错误");
+                Console.WriteLine($"[网络] 接收数据包时发生错误: {ex.Message}");
                 break;
             }
         }
 
         Console.WriteLine("[网络] 连接已关闭");
+    }
+
+    private static async Task SendAckAsync(NetworkStream stream, bool success, NetworkDataPacket packet, string message, CancellationToken ct)
+    {
+        var ack = new NetworkAckPacket
+        {
+            Success = success,
+            Timestamp = packet.Timestamp,
+            ChannelId = packet.ChannelId,
+            ActualLength = packet.ActualLength,
+            Message = message
+        };
+
+        await MessagePackSerializer.SerializeAsync(stream, ack, cancellationToken: ct);
+        await stream.FlushAsync(ct);
     }
 
     protected override bool OnProcess(RefCountBuffer<RawDataPacket> refBuffer) => true;

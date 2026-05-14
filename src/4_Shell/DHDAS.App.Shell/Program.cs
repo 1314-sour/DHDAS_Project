@@ -6,11 +6,9 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
-using System.Threading.Channels;
 
 // 引用契约、驱动、服务及基础设施
 using DHDAS.Contracts.Models;
-using DHDAS.Contracts.Memory;
 using DHDAS.Contracts.Services;
 using DHDAS.Contracts.Drivers;
 using DHDAS.Service.Signal;
@@ -29,6 +27,14 @@ class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        var role = GetOption(args, "--role", "receiver").ToLowerInvariant();
+        var targetIp = GetOption(args, "--target-ip", "127.0.0.1");
+        var targetPort = int.TryParse(GetOption(args, "--target-port", "5000"), out var parsedPort) ? parsedPort : 5000;
+        var channelId = int.TryParse(GetOption(args, "--channel", "0"), out var parsedChannel) ? parsedChannel : 0;
+        var pipelineScheme = BuildPipelineScheme(role);
+
+        Console.WriteLine($"[系统] 当前分布式角色: {role}");
+
         // 1. 初始化 .NET Generic Host (后台引擎)
         IHost host = Host.CreateDefaultBuilder(args)
             .ConfigureServices((hostContext, services) =>
@@ -47,12 +53,14 @@ class Program
                 // 注册发送节点
                 services.AddSingleton<NetworkSenderNode>();
                 services.AddSingleton<IPipelineNode>(sp => sp.GetRequiredService<NetworkSenderNode>());
-                services.AddHostedService(sp => sp.GetRequiredService<NetworkSenderNode>());
+                if (pipelineScheme.Contains(nameof(NetworkSenderNode)))
+                    services.AddHostedService(sp => sp.GetRequiredService<NetworkSenderNode>());
 
                 // 注册接收节点
                 services.AddSingleton<NetworkReceiverNode>();
                 services.AddSingleton<IPipelineNode>(sp => sp.GetRequiredService<NetworkReceiverNode>());
-                services.AddHostedService(sp => sp.GetRequiredService<NetworkReceiverNode>());
+                if (pipelineScheme.Contains(nameof(NetworkReceiverNode)))
+                    services.AddHostedService(sp => sp.GetRequiredService<NetworkReceiverNode>());
 
                 services.AddSingleton<DHDAS.Application.Support.IMessenger, DHDAS.Application.Support.AppMessenger>();
 
@@ -61,7 +69,8 @@ class Program
                 // 身份1：作为管道节点
                 services.AddSingleton<IPipelineNode>(sp => sp.GetRequiredService<AcquisitionService>());
                 // 身份2：作为后台托管服务
-                services.AddHostedService(sp => sp.GetRequiredService<AcquisitionService>());
+                if (pipelineScheme.Contains(nameof(AcquisitionService)))
+                    services.AddHostedService(sp => sp.GetRequiredService<AcquisitionService>());
 
                 // 注册数据推送节点
                 services.AddSingleton<DataPushService>();
@@ -70,12 +79,14 @@ class Program
                 // 身份2：作为管道节点
                 services.AddSingleton<IPipelineNode>(sp => sp.GetRequiredService<DataPushService>());
                 // 身份3：作为后台托管服务
-                services.AddHostedService(sp => sp.GetRequiredService<DataPushService>());
+                if (pipelineScheme.Contains(nameof(DataPushService)))
+                    services.AddHostedService(sp => sp.GetRequiredService<DataPushService>());
 
                 // 注册存储节点
                 services.AddSingleton<StorageService>();
                 services.AddSingleton<IPipelineNode>(sp => sp.GetRequiredService<StorageService>());
-                services.AddHostedService(sp => sp.GetRequiredService<StorageService>());
+                if (pipelineScheme.Contains(nameof(StorageService)))
+                    services.AddHostedService(sp => sp.GetRequiredService<StorageService>());
 
             })
             .Build();
@@ -86,23 +97,6 @@ class Program
         // 这一步必须在 host.Start() 之前执行，确保水管在开工前连好
         var orchestrator = host.Services.GetRequiredService<PipelineOrchestrator>();
 
-        // 此列表未来可从 appsettings.json 动态读取
-        var pipelineScheme = new List<string>
-        {
-            // nameof(AcquisitionService),
-            // nameof(NetworkSenderNode),
-
-            nameof(NetworkReceiverNode),
-            nameof(StorageService),
-            nameof(DataPushService),
-
-
-            // nameof(AcquisitionService),
-            // nameof(StorageService),
-            // nameof(DataPushService),
-            // nameof(NetworkSenderNode),
-        };
-
         try
         {
             orchestrator.BuildPipeline(pipelineScheme);
@@ -111,6 +105,13 @@ class Program
         {
             Console.WriteLine($"[致命] 管道编排失败: {ex.Message}");
             return;
+        }
+
+        if (role == "sender")
+        {
+            var sender = host.Services.GetRequiredService<NetworkSenderNode>();
+            sender.UpdateConfig(new[] { new NetworkRoute(channelId, targetIp, targetPort) });
+            Console.WriteLine($"[网络] 默认测试路由: 通道 {channelId} -> {targetIp}:{targetPort}");
         }
 
         // 2. 启动后台引擎 (拉起各节点 ExecuteAsync 线程)
@@ -151,5 +152,36 @@ class Program
             Console.WriteLine("[系统] 已针对 Windows 7 开启 RedirectionSurface 兼容模式");
         }
         return builder;
+    }
+
+    private static List<string> BuildPipelineScheme(string role)
+    {
+        return role switch
+        {
+            "sender" => new List<string>
+            {
+                nameof(AcquisitionService),
+                nameof(NetworkSenderNode),
+            },
+            "receiver" => new List<string>
+            {
+                nameof(NetworkReceiverNode),
+                nameof(DataPushService),
+                nameof(StorageService),
+            },
+            _ => throw new InvalidOperationException("未知角色，请使用 --role sender 或 --role receiver。")
+        };
+    }
+
+    private static string GetOption(string[] args, string name, string defaultValue)
+    {
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (!string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase)) continue;
+            if (i + 1 >= args.Length) return defaultValue;
+            return args[i + 1];
+        }
+
+        return defaultValue;
     }
 }
