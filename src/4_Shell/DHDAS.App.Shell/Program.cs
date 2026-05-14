@@ -43,6 +43,13 @@ class Program
                 // --- A. 基础设施注册 ---
                 services.AddSingleton<SessionManager>();
                 services.AddSingleton<IDistributedFeedbackService, DistributedFeedbackService>();
+                services.AddSingleton(new DistributedRuntimeOptions
+                {
+                    Role = role,
+                    TargetIp = targetIp,
+                    TargetPort = targetPort,
+                    ChannelId = channelId
+                });
                 services.AddSingleton<IDeviceDriver, SineWaveSimulator>();
                 services.AddSingleton<PluginManager>();
                 services.AddSingleton<MainWindowViewModel>();
@@ -162,7 +169,6 @@ class Program
         {
             "sender" => new List<string>
             {
-                nameof(AcquisitionService),
                 nameof(NetworkSenderNode),
             },
             "receiver" => new List<string>

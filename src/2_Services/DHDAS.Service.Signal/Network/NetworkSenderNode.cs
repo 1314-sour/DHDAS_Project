@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Net.Sockets;
 using MessagePack;
 using DHDAS.Contracts.Models;
@@ -12,7 +13,6 @@ public class NetworkSenderNode : BasePipelineNode
     public override string NodeId => nameof(NetworkSenderNode);
     private readonly List<NetworkRoute> _routes = new();
     private readonly Dictionary<string, TcpClient> _clients = new();
-    private readonly HashSet<string> _reportedSendSuccessRoutes = new();
     private readonly IDistributedFeedbackService _feedbackService;
     private readonly object _routesLock = new();
 
@@ -38,16 +38,56 @@ public class NetworkSenderNode : BasePipelineNode
             "Info");
     }
 
+    public void SendTestSinePacket(int channelId)
+    {
+        const int sampleRate = 1000;
+        const int batchSize = 100;
+        const double frequency = 2;
+
+        var data = new double[batchSize];
+        for (int i = 0; i < batchSize; i++)
+        {
+            data[i] = Math.Sin(2 * Math.PI * frequency * i / sampleRate);
+        }
+
+        var packet = new RawDataPacket
+        {
+            Timestamp = DateTime.Now.Ticks,
+            ChannelId = channelId,
+            SampleRate = sampleRate,
+            Data = data,
+            ActualLength = data.Length
+        };
+
+        SendPacket(packet, reportNoRoute: true);
+    }
+
     protected override bool OnProcess(RefCountBuffer<RawDataPacket> refBuffer)
     {
-        var packet = refBuffer.Data;
+        SendPacket(refBuffer.Data, reportNoRoute: false);
+        return true; // 继续流向本地下一节点
+    }
+
+    private void SendPacket(RawDataPacket packet, bool reportNoRoute)
+    {
         List<NetworkRoute> targets;
         lock (_routesLock)
         {
             targets = _routes.Where(r => r.ChannelId == packet.ChannelId).ToList();
         }
 
-        if (!targets.Any()) return true; // 快速检查：如果该通道没有配置路由，直接放行
+        if (!targets.Any())
+        {
+            if (reportNoRoute)
+            {
+                _feedbackService.Publish(
+                    "未配置发送路由",
+                    $"请先为通道 {packet.ChannelId} 添加目标路由。",
+                    "Warning");
+            }
+
+            return;
+        }
 
         foreach (var route in targets)
         {
@@ -75,21 +115,14 @@ public class NetworkSenderNode : BasePipelineNode
                 {
                     var stream = client.GetStream();
 
-                    // 序列化并发送，然后等待接收端业务确认
-                    MessagePackSerializer.Serialize(stream, netPacket);
-                    stream.Flush();
-
-                    var ack = MessagePackSerializer.Deserialize<NetworkAckPacket>(stream);
+                    WriteFrame(stream, netPacket);
+                    var ack = ReadFrame<NetworkAckPacket>(stream);
                     if (ack.Success)
                     {
-                        var successKey = $"{route.TargetIp}:{route.Port}:{ack.ChannelId}";
-                        if (_reportedSendSuccessRoutes.Add(successKey))
-                        {
-                            _feedbackService.Publish(
-                                "发送端确认成功",
-                                $"通道 {ack.ChannelId} 已发送到 {route.TargetIp}:{route.Port}，接收长度 {ack.ActualLength}",
-                                "Success");
-                        }
+                        _feedbackService.Publish(
+                            "发送端确认成功",
+                            $"通道 {ack.ChannelId} 已发送到 {route.TargetIp}:{route.Port}，接收长度 {ack.ActualLength}",
+                            "Success");
                     }
                     else
                     {
@@ -108,7 +141,6 @@ public class NetworkSenderNode : BasePipelineNode
                     "Error");
             }
         }
-        return true; // 继续流向本地下一节点
     }
 
     private TcpClient? GetOrCreateClient(string ip, int port)
@@ -131,6 +163,47 @@ public class NetworkSenderNode : BasePipelineNode
             _feedbackService.Publish("连接接收端失败", $"{key}: {ex.Message}", "Error");
             return null;
         }
+    }
+
+    private static void WriteFrame<T>(NetworkStream stream, T value)
+    {
+        var payload = MessagePackSerializer.Serialize(value);
+        var header = new byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(header, payload.Length);
+        stream.Write(header, 0, header.Length);
+        stream.Write(payload, 0, payload.Length);
+        stream.Flush();
+    }
+
+    private static T ReadFrame<T>(NetworkStream stream)
+    {
+        var header = ReadExact(stream, 4);
+        var length = BinaryPrimitives.ReadInt32BigEndian(header);
+        if (length <= 0 || length > 10 * 1024 * 1024)
+        {
+            throw new InvalidDataException($"无效消息长度: {length}");
+        }
+
+        var payload = ReadExact(stream, length);
+        return MessagePackSerializer.Deserialize<T>(payload);
+    }
+
+    private static byte[] ReadExact(NetworkStream stream, int length)
+    {
+        var buffer = new byte[length];
+        var offset = 0;
+        while (offset < length)
+        {
+            var read = stream.Read(buffer, offset, length - offset);
+            if (read == 0)
+            {
+                throw new EndOfStreamException("连接已关闭。");
+            }
+
+            offset += read;
+        }
+
+        return buffer;
     }
 
     protected override Task OnCleanupAsync()

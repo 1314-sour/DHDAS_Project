@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using MessagePack;
@@ -14,7 +15,6 @@ public class NetworkReceiverNode : BasePipelineNode
     public override string NodeId => nameof(NetworkReceiverNode);
     private readonly SessionManager _sessionManager;
     private readonly IDistributedFeedbackService _feedbackService;
-    private readonly HashSet<int> _reportedReceivedChannels = new();
     private TcpListener? _listener;
 
     public NetworkReceiverNode(SessionManager sessionManager, IDistributedFeedbackService feedbackService)
@@ -47,8 +47,7 @@ public class NetworkReceiverNode : BasePipelineNode
         {
             try
             {
-                // 反序列化接收
-                var netPacket = await MessagePackSerializer.DeserializeAsync<NetworkDataPacket>(stream);
+                var netPacket = await ReadFrameAsync<NetworkDataPacket>(stream, ct);
 
                 if (netPacket.Data.Length < netPacket.ActualLength)
                 {
@@ -89,13 +88,10 @@ public class NetworkReceiverNode : BasePipelineNode
 
                 if (acceptedByPipeline)
                 {
-                    if (_reportedReceivedChannels.Add(rawPacket.ChannelId))
-                    {
-                        _feedbackService.Publish(
-                            "接收端确认成功",
-                            $"已正确接收通道 {rawPacket.ChannelId}，长度 {rawPacket.ActualLength}",
-                            "Success");
-                    }
+                    _feedbackService.Publish(
+                        "接收端收到数据",
+                        BuildReceivedPreview(rawPacket),
+                        "Success");
 
                     await SendAckAsync(stream, true, netPacket, "OK", ct);
                 }
@@ -116,6 +112,13 @@ public class NetworkReceiverNode : BasePipelineNode
         }
     }
 
+    private static string BuildReceivedPreview(RawDataPacket packet)
+    {
+        var previewLength = Math.Min(packet.ActualLength, 8);
+        var preview = string.Join(", ", packet.Data.Take(previewLength).Select(v => v.ToString("F3")));
+        return $"通道: {packet.ChannelId}\n长度: {packet.ActualLength}\n前 {previewLength} 个采样值: {preview}";
+    }
+
     private static async Task SendAckAsync(NetworkStream stream, bool success, NetworkDataPacket packet, string message, CancellationToken ct)
     {
         var ack = new NetworkAckPacket
@@ -127,8 +130,48 @@ public class NetworkReceiverNode : BasePipelineNode
             Message = message
         };
 
-        await MessagePackSerializer.SerializeAsync(stream, ack, cancellationToken: ct);
+        await WriteFrameAsync(stream, ack, ct);
+    }
+
+    private static async Task WriteFrameAsync<T>(NetworkStream stream, T value, CancellationToken ct)
+    {
+        var payload = MessagePackSerializer.Serialize(value);
+        var header = new byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(header, payload.Length);
+        await stream.WriteAsync(header, 0, header.Length, ct);
+        await stream.WriteAsync(payload, 0, payload.Length, ct);
         await stream.FlushAsync(ct);
+    }
+
+    private static async Task<T> ReadFrameAsync<T>(NetworkStream stream, CancellationToken ct)
+    {
+        var header = await ReadExactAsync(stream, 4, ct);
+        var length = BinaryPrimitives.ReadInt32BigEndian(header);
+        if (length <= 0 || length > 10 * 1024 * 1024)
+        {
+            throw new InvalidDataException($"无效消息长度: {length}");
+        }
+
+        var payload = await ReadExactAsync(stream, length, ct);
+        return MessagePackSerializer.Deserialize<T>(payload);
+    }
+
+    private static async Task<byte[]> ReadExactAsync(NetworkStream stream, int length, CancellationToken ct)
+    {
+        var buffer = new byte[length];
+        var offset = 0;
+        while (offset < length)
+        {
+            var read = await stream.ReadAsync(buffer, offset, length - offset, ct);
+            if (read == 0)
+            {
+                throw new EndOfStreamException("连接已关闭。");
+            }
+
+            offset += read;
+        }
+
+        return buffer;
     }
 
     protected override bool OnProcess(RefCountBuffer<RawDataPacket> refBuffer) => true;
