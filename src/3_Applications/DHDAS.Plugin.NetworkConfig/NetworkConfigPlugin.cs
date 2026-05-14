@@ -31,17 +31,21 @@ public class NetworkConfigPlugin : PluginBase
         {
             panel.Children.Add(new TextBlock
             {
-                Text = "点击发送后，会发送 1000 点、5 个完整周期的模拟正弦波。接收端请在“实时波形显示”查看完整曲线。",
+                Text = "先生成 1000 点、5 个完整周期的模拟正弦波；在“实时波形显示”确认后，再发送当前波形。",
                 TextWrapping = Avalonia.Media.TextWrapping.Wrap
             });
 
             var btn = new Button { Content = "添加本地回环路由 (CH0 -> 127.0.0.1)" };
             btn.Click += (s, e) => vm.AddRoute();
 
-            var sendBtn = new Button { Content = "发送一次测试正弦数据 (CH0)" };
+            var generateBtn = new Button { Content = "生成测试正弦波 (CH0)" };
+            generateBtn.Click += (s, e) => vm.GenerateWaveform();
+
+            var sendBtn = new Button { Content = "发送当前波形" };
             sendBtn.Click += (s, e) => vm.SendOnce();
 
             panel.Children.Add(btn);
+            panel.Children.Add(generateBtn);
             panel.Children.Add(sendBtn);
         }
         else

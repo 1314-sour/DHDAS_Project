@@ -44,6 +44,11 @@ public class NetworkConfigViewModel : PluginViewModelBase
 
     public void SendOnce()
     {
-        _senderNode.SendTestSinePacket(InputChannel);
+        _senderNode.SendCurrentTestPacket();
+    }
+
+    public void GenerateWaveform()
+    {
+        _senderNode.GenerateTestSinePacket(InputChannel);
     }
 }

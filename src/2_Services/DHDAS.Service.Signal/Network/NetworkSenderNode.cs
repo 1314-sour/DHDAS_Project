@@ -14,11 +14,16 @@ public class NetworkSenderNode : BasePipelineNode
     private readonly List<NetworkRoute> _routes = new();
     private readonly Dictionary<string, TcpClient> _clients = new();
     private readonly IDistributedFeedbackService _feedbackService;
+    private readonly IWaveformSnapshotService _waveformSnapshotService;
     private readonly object _routesLock = new();
+    private RawDataPacket? _pendingTestPacket;
 
-    public NetworkSenderNode(IDistributedFeedbackService feedbackService)
+    public NetworkSenderNode(
+        IDistributedFeedbackService feedbackService,
+        IWaveformSnapshotService waveformSnapshotService)
     {
         _feedbackService = feedbackService;
+        _waveformSnapshotService = waveformSnapshotService;
     }
 
     // 由应用层插件调用，动态更新路由
@@ -38,7 +43,7 @@ public class NetworkSenderNode : BasePipelineNode
             "Info");
     }
 
-    public void SendTestSinePacket(int channelId)
+    public void GenerateTestSinePacket(int channelId)
     {
         const int sampleRate = 1000;
         const int batchSize = 1000;
@@ -59,7 +64,33 @@ public class NetworkSenderNode : BasePipelineNode
             ActualLength = data.Length
         };
 
-        SendPacket(packet, reportNoRoute: true);
+        _pendingTestPacket = packet;
+        _waveformSnapshotService.Publish(new WaveformSnapshot
+        {
+            ChannelId = packet.ChannelId,
+            Timestamp = packet.Timestamp,
+            Samples = packet.Data.Take(packet.ActualLength).ToArray(),
+            ActualLength = packet.ActualLength
+        });
+
+        _feedbackService.Publish(
+            "发送端已生成波形",
+            $"已生成通道 {channelId} 的 1000 点正弦波，请在“实时波形显示”查看，确认后再发送。",
+            "Success");
+    }
+
+    public void SendCurrentTestPacket()
+    {
+        if (_pendingTestPacket == null)
+        {
+            _feedbackService.Publish(
+                "没有可发送数据",
+                "请先生成测试正弦波，并在“实时波形显示”确认。",
+                "Warning");
+            return;
+        }
+
+        SendPacket(_pendingTestPacket.Value, reportNoRoute: true);
     }
 
     protected override bool OnProcess(RefCountBuffer<RawDataPacket> refBuffer)
