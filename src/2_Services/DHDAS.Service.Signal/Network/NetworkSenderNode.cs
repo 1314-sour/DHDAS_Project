@@ -2,6 +2,7 @@ using System.Net.Sockets;
 using MessagePack;
 using DHDAS.Contracts.Models;
 using DHDAS.Contracts.Memory;
+using DHDAS.Contracts.Services;
 using DHDAS.Service.Signal.Common;
 
 namespace DHDAS.Service.Signal.Network;
@@ -11,17 +12,30 @@ public class NetworkSenderNode : BasePipelineNode
     public override string NodeId => nameof(NetworkSenderNode);
     private readonly List<NetworkRoute> _routes = new();
     private readonly Dictionary<string, TcpClient> _clients = new();
+    private readonly HashSet<string> _reportedSendSuccessRoutes = new();
+    private readonly IDistributedFeedbackService _feedbackService;
     private readonly object _routesLock = new();
+
+    public NetworkSenderNode(IDistributedFeedbackService feedbackService)
+    {
+        _feedbackService = feedbackService;
+    }
 
     // 由应用层插件调用，动态更新路由
     public void UpdateConfig(IEnumerable<NetworkRoute> newRoutes)
     {
+        int routeCount;
         lock (_routesLock)
         {
             _routes.Clear();
             _routes.AddRange(newRoutes);
-            Console.WriteLine($"[网络] 路由表已更新，当前规则数: {_routes.Count}");
+            routeCount = _routes.Count;
         }
+
+        _feedbackService.Publish(
+            "发送端路由已启动",
+            $"当前路由规则数: {routeCount}",
+            "Info");
     }
 
     protected override bool OnProcess(RefCountBuffer<RawDataPacket> refBuffer)
@@ -42,7 +56,10 @@ public class NetworkSenderNode : BasePipelineNode
                 var client = GetOrCreateClient(route.TargetIp, route.Port);
                 if (client is not { Connected: true })
                 {
-                    Console.WriteLine($"[网络] 发送失败: 无法连接 {route.TargetIp}:{route.Port}");
+                    _feedbackService.Publish(
+                        "发送失败",
+                        $"无法连接 {route.TargetIp}:{route.Port}",
+                        "Error");
                     continue;
                 }
 
@@ -65,17 +82,30 @@ public class NetworkSenderNode : BasePipelineNode
                     var ack = MessagePackSerializer.Deserialize<NetworkAckPacket>(stream);
                     if (ack.Success)
                     {
-                        Console.WriteLine($"[网络] 发送成功: 通道 {ack.ChannelId}, 长度 {ack.ActualLength}, 目标 {route.TargetIp}:{route.Port}");
+                        var successKey = $"{route.TargetIp}:{route.Port}:{ack.ChannelId}";
+                        if (_reportedSendSuccessRoutes.Add(successKey))
+                        {
+                            _feedbackService.Publish(
+                                "发送端确认成功",
+                                $"通道 {ack.ChannelId} 已发送到 {route.TargetIp}:{route.Port}，接收长度 {ack.ActualLength}",
+                                "Success");
+                        }
                     }
                     else
                     {
-                        Console.WriteLine($"[网络] 接收端拒收: 通道 {packet.ChannelId}, 目标 {route.TargetIp}:{route.Port}, 原因: {ack.Message}");
+                        _feedbackService.Publish(
+                            "接收端拒收",
+                            $"通道 {packet.ChannelId} -> {route.TargetIp}:{route.Port}，原因: {ack.Message}",
+                            "Warning");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[网络] 发送至 {route.TargetIp} 失败: {ex.Message}");
+                _feedbackService.Publish(
+                    "发送异常",
+                    $"发送至 {route.TargetIp}:{route.Port} 失败: {ex.Message}",
+                    "Error");
             }
         }
         return true; // 继续流向本地下一节点
@@ -93,12 +123,12 @@ public class NetworkSenderNode : BasePipelineNode
             newClient.ReceiveTimeout = 2000;
             newClient.SendTimeout = 2000;
             _clients[key] = newClient;
-            Console.WriteLine($"[网络] 已连接接收端: {key}");
+            _feedbackService.Publish("发送端已连接", $"已连接接收端 {key}", "Success");
             return newClient;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[网络] 连接接收端失败: {key}, 原因: {ex.Message}");
+            _feedbackService.Publish("连接接收端失败", $"{key}: {ex.Message}", "Error");
             return null;
         }
     }

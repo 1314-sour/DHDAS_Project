@@ -15,6 +15,7 @@ using DHDAS.Service.Signal;
 using DHDAS.App.Shell.ViewModels;
 using DHDAS.App.Shell.Services;
 using DHDAS.Driver.Simulator;
+using DHDAS.Infrastructure.Core;
 using DHDAS.Infrastructure.Core.Session;
 using DHDAS.Service.Signal.Network;
 
@@ -41,6 +42,7 @@ class Program
             {
                 // --- A. 基础设施注册 ---
                 services.AddSingleton<SessionManager>();
+                services.AddSingleton<IDistributedFeedbackService, DistributedFeedbackService>();
                 services.AddSingleton<IDeviceDriver, SineWaveSimulator>();
                 services.AddSingleton<PluginManager>();
                 services.AddSingleton<MainWindowViewModel>();

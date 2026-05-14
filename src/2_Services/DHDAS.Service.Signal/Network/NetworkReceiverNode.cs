@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using MessagePack;
 using DHDAS.Contracts.Models;
 using DHDAS.Contracts.Memory;
+using DHDAS.Contracts.Services;
 using DHDAS.Infrastructure.Core.Session;
 using DHDAS.Service.Signal.Common;
 
@@ -12,15 +13,21 @@ public class NetworkReceiverNode : BasePipelineNode
 {
     public override string NodeId => nameof(NetworkReceiverNode);
     private readonly SessionManager _sessionManager;
+    private readonly IDistributedFeedbackService _feedbackService;
+    private readonly HashSet<int> _reportedReceivedChannels = new();
     private TcpListener? _listener;
 
-    public NetworkReceiverNode(SessionManager sessionManager) => _sessionManager = sessionManager;
+    public NetworkReceiverNode(SessionManager sessionManager, IDistributedFeedbackService feedbackService)
+    {
+        _sessionManager = sessionManager;
+        _feedbackService = feedbackService;
+    }
 
     protected override async Task RunAsSourceAsync(CancellationToken ct)
     {
         _listener = new TcpListener(IPAddress.Any, 5000);
         _listener.Start();
-        Console.WriteLine("[网络] 接收节点已在端口 5000 启动监听...");
+        _feedbackService.Publish("接收端已启动", "正在监听 5000 端口", "Success");
 
         try
         {
@@ -45,6 +52,10 @@ public class NetworkReceiverNode : BasePipelineNode
 
                 if (netPacket.Data.Length < netPacket.ActualLength)
                 {
+                    _feedbackService.Publish(
+                        "接收数据异常",
+                        $"通道 {netPacket.ChannelId} 数据长度小于有效长度",
+                        "Error");
                     await SendAckAsync(stream, false, netPacket, "数据长度小于有效长度", ct);
                     continue;
                 }
@@ -64,7 +75,6 @@ public class NetworkReceiverNode : BasePipelineNode
 
                 var refBuffer = new RefCountBuffer<RawDataPacket>(rawPacket, p => session.Return(p.Data));
                 refBuffer.Retain(); // 初始计数
-                Console.WriteLine($"[网络] 成功接收数据包: 通道 {rawPacket.ChannelId}, 长度 {rawPacket.ActualLength}");
                 var acceptedByPipeline = true;
                 if (_outputPipe != null)
                 {
@@ -79,21 +89,31 @@ public class NetworkReceiverNode : BasePipelineNode
 
                 if (acceptedByPipeline)
                 {
+                    if (_reportedReceivedChannels.Add(rawPacket.ChannelId))
+                    {
+                        _feedbackService.Publish(
+                            "接收端确认成功",
+                            $"已正确接收通道 {rawPacket.ChannelId}，长度 {rawPacket.ActualLength}",
+                            "Success");
+                    }
+
                     await SendAckAsync(stream, true, netPacket, "OK", ct);
                 }
                 else
                 {
+                    _feedbackService.Publish(
+                        "接收端管道繁忙",
+                        $"通道 {rawPacket.ChannelId} 暂时无法写入本机管道",
+                        "Warning");
                     await SendAckAsync(stream, false, netPacket, "接收端本机管道繁忙", ct);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[网络] 接收数据包时发生错误: {ex.Message}");
+                _feedbackService.Publish("接收异常", ex.Message, "Error");
                 break;
             }
         }
-
-        Console.WriteLine("[网络] 连接已关闭");
     }
 
     private static async Task SendAckAsync(NetworkStream stream, bool success, NetworkDataPacket packet, string message, CancellationToken ct)
