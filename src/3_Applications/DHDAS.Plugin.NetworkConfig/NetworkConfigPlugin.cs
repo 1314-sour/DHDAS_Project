@@ -4,6 +4,7 @@ using Avalonia.Controls; // 解决 Control 找不到的问题
 using Avalonia.Layout;
 using Microsoft.Extensions.DependencyInjection;
 using DHDAS.Application.Support;
+using DHDAS.Contracts.Models;
 using DHDAS.Plugin.NetworkConfig.ViewModels;
 
 namespace DHDAS.Plugin.NetworkConfig;
@@ -31,7 +32,7 @@ public class NetworkConfigPlugin : PluginBase
         {
             panel.Children.Add(new TextBlock
             {
-                Text = "计算节点映射表：配置目标节点、IP、端口和负责转发的通道范围。先生成正弦波并在“实时波形显示”确认，再发送当前波形。",
+                Text = "计算节点映射表：配置目标节点、IP、端口和负责转发的通道范围。选中路由表中的目标节点，生成对应通道正弦波并发送。",
                 TextWrapping = Avalonia.Media.TextWrapping.Wrap
             });
 
@@ -93,7 +94,7 @@ public class NetworkConfigPlugin : PluginBase
                 vm.GenerateWaveform();
             };
 
-            var sendBtn = new Button { Content = "发送当前波形" };
+            var sendBtn = new Button { Content = "发送到选中路由" };
             sendBtn.Click += (s, e) => vm.SendOnce();
 
             var waveformButtons = new StackPanel
@@ -106,17 +107,25 @@ public class NetworkConfigPlugin : PluginBase
             panel.Children.Add(waveformButtons);
 
             panel.Children.Add(new TextBlock { Text = "当前路由表", FontWeight = Avalonia.Media.FontWeight.Bold });
-            panel.Children.Add(new ListBox
+            var routeList = new ListBox
             {
                 ItemsSource = vm.Routes,
                 MinHeight = 80,
                 MaxHeight = 120
-            });
+            };
+            routeList.SelectionChanged += (s, e) =>
+            {
+                if (routeList.SelectedItem is not NetworkRoute route) return;
+                vm.SelectedRoute = route;
+                vm.TestChannelId = route.StartChannelId;
+                testChannel.Text = route.StartChannelId.ToString();
+            };
+            panel.Children.Add(routeList);
 
-            var connectButton = new Button { Content = "连接第一条路由" };
+            var connectButton = new Button { Content = "连接选中路由" };
             connectButton.Click += (s, e) => vm.ConnectSelected();
 
-            var disconnectButton = new Button { Content = "断开第一条路由" };
+            var disconnectButton = new Button { Content = "断开选中路由" };
             disconnectButton.Click += (s, e) => vm.DisconnectSelected();
 
             var linkButtons = new StackPanel

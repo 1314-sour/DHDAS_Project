@@ -25,6 +25,7 @@ public class NetworkConfigViewModel : PluginViewModelBase
     [Reactive] public int StartChannelId { get; set; } = 0;
     [Reactive] public int EndChannelId { get; set; } = 0;
     [Reactive] public int TestChannelId { get; set; } = 0;
+    [Reactive] public NetworkRoute? SelectedRoute { get; set; }
 
     public bool IsSender => _runtimeOptions.IsSender;
     public bool IsReceiver => _runtimeOptions.IsReceiver;
@@ -50,6 +51,8 @@ public class NetworkConfigViewModel : PluginViewModelBase
     {
         var route = new NetworkRoute(InputNodeName, InputIp, InputPort, StartChannelId, EndChannelId);
         Routes.Add(route);
+        SelectedRoute = route;
+        TestChannelId = route.StartChannelId;
         ApplyRoutingTable();
     }
 
@@ -60,7 +63,7 @@ public class NetworkConfigViewModel : PluginViewModelBase
 
     public async void ConnectSelected()
     {
-        var route = Routes.FirstOrDefault();
+        var route = SelectedRoute ?? Routes.FirstOrDefault();
         if (route != null)
         {
             await _networkService.ConnectAsync(route);
@@ -69,7 +72,7 @@ public class NetworkConfigViewModel : PluginViewModelBase
 
     public async void DisconnectSelected()
     {
-        var route = Routes.FirstOrDefault();
+        var route = SelectedRoute ?? Routes.FirstOrDefault();
         if (route != null)
         {
             await _networkService.DisconnectAsync(route);
@@ -78,6 +81,12 @@ public class NetworkConfigViewModel : PluginViewModelBase
 
     public void SendOnce()
     {
+        if (SelectedRoute != null)
+        {
+            _networkService.SendCurrentTestPacketToRoute(SelectedRoute);
+            return;
+        }
+
         _networkService.SendCurrentTestPacket();
     }
 

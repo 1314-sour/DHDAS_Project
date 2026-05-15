@@ -17,4 +17,6 @@ public interface INetworkService
     void GenerateTestSinePacket(int channelId);
 
     void SendCurrentTestPacket();
+
+    void SendCurrentTestPacketToRoute(NetworkRoute route);
 }

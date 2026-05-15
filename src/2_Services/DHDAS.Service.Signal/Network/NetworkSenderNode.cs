@@ -170,6 +170,32 @@ public class NetworkSenderNode : BasePipelineNode, INetworkService
         EnqueuePacket(refBuffer, reportNoRoute: true);
     }
 
+    public void SendCurrentTestPacketToRoute(NetworkRoute route)
+    {
+        if (_pendingTestPacket == null)
+        {
+            _feedbackService.Publish(
+                "没有可发送数据",
+                "请先生成测试正弦波，并在“实时波形显示”确认。",
+                "Warning");
+            return;
+        }
+
+        var packet = _pendingTestPacket.Value;
+        if (!route.ContainsChannel(packet.ChannelId))
+        {
+            _feedbackService.Publish(
+                "通道与路由不匹配",
+                $"当前波形为 CH{packet.ChannelId}，选中路由负责 CH{route.StartChannelId}-{route.EndChannelId}。请先生成选中路由范围内的测试通道。",
+                "Warning");
+            return;
+        }
+
+        using var refBuffer = new RefCountBuffer<RawDataPacket>(packet, _ => { });
+        refBuffer.Retain();
+        EnqueuePacketToRoute(refBuffer, route);
+    }
+
     protected override bool OnProcess(RefCountBuffer<RawDataPacket> refBuffer)
     {
         EnqueuePacket(refBuffer, reportNoRoute: false);
@@ -213,12 +239,22 @@ public class NetworkSenderNode : BasePipelineNode, INetworkService
         var packetId = Guid.NewGuid();
         foreach (var route in targets)
         {
-            refBuffer.Retain();
-            if (!_sendQueue.Writer.TryWrite(new QueuedNetworkPacket(route, refBuffer, packetId)))
-            {
-                refBuffer.Dispose();
-                MarkFailure(route, "发送队列不可用，请确认发送端后台节点仍在运行");
-            }
+            TryQueueRoute(refBuffer, route, packetId);
+        }
+    }
+
+    private void EnqueuePacketToRoute(RefCountBuffer<RawDataPacket> refBuffer, NetworkRoute route)
+    {
+        TryQueueRoute(refBuffer, route, Guid.NewGuid());
+    }
+
+    private void TryQueueRoute(RefCountBuffer<RawDataPacket> refBuffer, NetworkRoute route, Guid packetId)
+    {
+        refBuffer.Retain();
+        if (!_sendQueue.Writer.TryWrite(new QueuedNetworkPacket(route, refBuffer, packetId)))
+        {
+            refBuffer.Dispose();
+            MarkFailure(route, "发送队列不可用，请确认发送端后台节点仍在运行");
         }
     }
 
