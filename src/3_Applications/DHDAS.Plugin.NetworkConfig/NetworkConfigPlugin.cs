@@ -1,6 +1,7 @@
 using System;
 using Avalonia;
 using Avalonia.Controls; // 解决 Control 找不到的问题
+using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Microsoft.Extensions.DependencyInjection;
 using DHDAS.Application.Support;
@@ -110,6 +111,40 @@ public class NetworkConfigPlugin : PluginBase
             var routeList = new ListBox
             {
                 ItemsSource = vm.Routes,
+                ItemTemplate = new FuncDataTemplate<NetworkRoute>((route, _) =>
+                {
+                    var row = new Grid
+                    {
+                        ColumnDefinitions = new ColumnDefinitions("*,Auto")
+                    };
+
+                    var text = new TextBlock
+                    {
+                        Text = route?.ToString() ?? string.Empty,
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    Grid.SetColumn(text, 0);
+                    row.Children.Add(text);
+
+                    var deleteButton = new Button
+                    {
+                        Content = "X",
+                        Width = 32,
+                        Height = 28,
+                        Margin = new Thickness(8, 0, 0, 0)
+                    };
+                    deleteButton.Click += (s, e) =>
+                    {
+                        if (route != null)
+                        {
+                            vm.RemoveRoute(route);
+                        }
+                    };
+                    Grid.SetColumn(deleteButton, 1);
+                    row.Children.Add(deleteButton);
+
+                    return row;
+                }),
                 MinHeight = 80,
                 MaxHeight = 120
             };

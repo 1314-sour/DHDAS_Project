@@ -57,6 +57,28 @@ public class NetworkConfigViewModel : PluginViewModelBase
         ApplyRoutingTable();
     }
 
+    public void RemoveRoute(NetworkRoute route)
+    {
+        Routes.Remove(route);
+
+        var status = LinkStatuses.FirstOrDefault(s => s.Endpoint == route.Endpoint);
+        if (status != null)
+        {
+            LinkStatuses.Remove(status);
+        }
+
+        if (SelectedRoute == route)
+        {
+            SelectedRoute = Routes.FirstOrDefault();
+            if (SelectedRoute != null)
+            {
+                TestChannelId = SelectedRoute.StartChannelId;
+            }
+        }
+
+        ApplyRoutingTable();
+    }
+
     public void ApplyRoutingTable()
     {
         _networkService.UpdateRoutingTable(Routes.ToList());

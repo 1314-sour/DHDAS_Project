@@ -129,12 +129,14 @@ public class NetworkSenderNode : BasePipelineNode, INetworkService
     {
         const int sampleRate = 1000;
         const int batchSize = 1000;
-        const double frequency = 5;
+        var normalizedChannel = Math.Abs(channelId);
+        var frequency = 5 + normalizedChannel * 3;
+        var amplitude = Math.Max(0.35, 1.0 - normalizedChannel * 0.12);
 
         var data = new double[batchSize];
         for (int i = 0; i < batchSize; i++)
         {
-            data[i] = Math.Sin(2 * Math.PI * frequency * i / sampleRate);
+            data[i] = amplitude * Math.Sin(2 * Math.PI * frequency * i / sampleRate);
         }
 
         var packet = new RawDataPacket
@@ -157,7 +159,7 @@ public class NetworkSenderNode : BasePipelineNode, INetworkService
 
         _feedbackService.Publish(
             "发送端已生成波形",
-            $"已生成 CH{channelId} 的 1000 点正弦波，请在“实时波形显示”查看，确认后再发送。",
+            $"已生成 CH{channelId} 的 1000 点正弦波，频率 {frequency}Hz，幅值 {amplitude:F2}，请在“实时波形显示”查看，确认后再发送。",
             "Success");
     }
 
