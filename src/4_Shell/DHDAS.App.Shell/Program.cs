@@ -113,13 +113,6 @@ class Program
             return;
         }
 
-        if (role == "sender")
-        {
-            var sender = host.Services.GetRequiredService<INetworkService>();
-            sender.UpdateRoutingTable(new List<NetworkRoute> { new("本地回环节点", targetIp, targetPort, channelId, channelId) });
-            Console.WriteLine($"[网络] 默认测试路由: 通道 {channelId} -> {targetIp}:{targetPort}");
-        }
-
         // 2. 启动后台引擎 (拉起各节点 ExecuteAsync 线程)
         host.Start();
 
