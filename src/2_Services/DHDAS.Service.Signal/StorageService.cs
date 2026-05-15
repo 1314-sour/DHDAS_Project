@@ -19,10 +19,11 @@ public class StorageService : BasePipelineNode
     // 控制开关：实际应用中可以通过接口开启/关闭
     public bool IsRecording { get; set; } = true;
 
-    public StorageService()
+    public StorageService(DistributedRuntimeOptions runtimeOptions)
     {
         // Demo 期间，直接存在程序运行目录下
-        _filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "recorded_data.dat");
+        var suffix = runtimeOptions.IsReceiver ? $"_{runtimeOptions.ListenPort}" : string.Empty;
+        _filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"recorded_data{suffix}.dat");
     }
 
     public override async Task StartAsync(CancellationToken cancellationToken)
