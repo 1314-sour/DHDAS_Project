@@ -149,7 +149,7 @@ public class NetworkSenderNode : BasePipelineNode, INetworkService
 
         _feedbackService.Publish(
             "发送端已生成波形",
-            $"已生成通道 {channelId} 的 1000 点正弦波，请在“实时波形显示”查看，确认后再发送。",
+            $"已生成 CH{channelId} 的 1000 点正弦波，请在“实时波形显示”查看，确认后再发送。",
             "Success");
     }
 
@@ -210,10 +210,11 @@ public class NetworkSenderNode : BasePipelineNode, INetworkService
             return;
         }
 
+        var packetId = Guid.NewGuid();
         foreach (var route in targets)
         {
             refBuffer.Retain();
-            if (!_sendQueue.Writer.TryWrite(new QueuedNetworkPacket(route, refBuffer)))
+            if (!_sendQueue.Writer.TryWrite(new QueuedNetworkPacket(route, refBuffer, packetId)))
             {
                 refBuffer.Dispose();
                 MarkFailure(route, "发送队列不可用，请确认发送端后台节点仍在运行");
@@ -227,12 +228,12 @@ public class NetworkSenderNode : BasePipelineNode, INetworkService
         {
             using (item.Buffer)
             {
-                await SendToRouteAsync(item.Route, item.Buffer.Data, ct);
+                await SendToRouteAsync(item.Route, item.Buffer.Data, item.PacketId, ct);
             }
         }
     }
 
-    private async Task SendToRouteAsync(NetworkRoute route, RawDataPacket packet, CancellationToken ct)
+    private async Task SendToRouteAsync(NetworkRoute route, RawDataPacket packet, Guid packetId, CancellationToken ct)
     {
         try
         {
@@ -245,7 +246,7 @@ public class NetworkSenderNode : BasePipelineNode, INetworkService
 
             var netPacket = new NetworkDataPacket
             {
-                PacketId = Guid.NewGuid(),
+                PacketId = packetId,
                 Timestamp = packet.Timestamp,
                 ChannelId = packet.ChannelId,
                 Data = packet.Data.Take(packet.ActualLength).ToArray(),
@@ -467,7 +468,7 @@ public class NetworkSenderNode : BasePipelineNode, INetworkService
         return Task.CompletedTask;
     }
 
-    private sealed record QueuedNetworkPacket(NetworkRoute Route, RefCountBuffer<RawDataPacket> Buffer);
+    private sealed record QueuedNetworkPacket(NetworkRoute Route, RefCountBuffer<RawDataPacket> Buffer, Guid PacketId);
 
     private sealed class LinkStatusObservable : IObservable<NetworkLinkStatus>
     {

@@ -17,6 +17,7 @@ public class NetworkReceiverNode : BasePipelineNode
     private readonly SessionManager _sessionManager;
     private readonly IDistributedFeedbackService _feedbackService;
     private readonly IWaveformSnapshotService _waveformSnapshotService;
+    private readonly DistributedRuntimeOptions _runtimeOptions;
     private readonly ILogger<NetworkReceiverNode> _logger;
     private TcpListener? _listener;
 
@@ -24,20 +25,23 @@ public class NetworkReceiverNode : BasePipelineNode
         SessionManager sessionManager,
         IDistributedFeedbackService feedbackService,
         IWaveformSnapshotService waveformSnapshotService,
+        DistributedRuntimeOptions runtimeOptions,
         ILogger<NetworkReceiverNode> logger)
     {
         _sessionManager = sessionManager;
         _feedbackService = feedbackService;
         _waveformSnapshotService = waveformSnapshotService;
+        _runtimeOptions = runtimeOptions;
         _logger = logger;
     }
 
     protected override async Task RunAsSourceAsync(CancellationToken ct)
     {
-        _listener = new TcpListener(IPAddress.Any, 5000);
+        var listenPort = _runtimeOptions.ListenPort;
+        _listener = new TcpListener(IPAddress.Any, listenPort);
         _listener.Start();
-        _logger.LogInformation("网络接收节点已启动监听端口 {Port}", 5000);
-        _feedbackService.Publish("接收端已启动", "正在监听 5000 端口", "Success");
+        _logger.LogInformation("网络接收节点已启动监听端口 {Port}", listenPort);
+        _feedbackService.Publish("接收端已启动", $"正在监听 {listenPort} 端口", "Success");
 
         try
         {
@@ -109,9 +113,9 @@ public class NetworkReceiverNode : BasePipelineNode
 
                     _feedbackService.Publish(
                         "接收端收到数据",
-                        BuildReceivedPreview(rawPacket),
+                        BuildReceivedPreview(netPacket),
                         "Success");
-                    _logger.LogInformation("接收网络数据成功: Channel={ChannelId}, Length={Length}", rawPacket.ChannelId, rawPacket.ActualLength);
+                    _logger.LogInformation("接收网络数据成功: PacketId={PacketId}, SourceNode={SourceNode}, Channel={ChannelId}, Length={Length}", netPacket.PacketId, netPacket.SourceNode, rawPacket.ChannelId, rawPacket.ActualLength);
 
                     await SendAckAsync(stream, true, netPacket, "OK", ct);
                 }
@@ -133,11 +137,11 @@ public class NetworkReceiverNode : BasePipelineNode
         }
     }
 
-    private static string BuildReceivedPreview(RawDataPacket packet)
+    private static string BuildReceivedPreview(NetworkDataPacket packet)
     {
         var previewLength = Math.Min(packet.ActualLength, 8);
         var preview = string.Join(", ", packet.Data.Take(previewLength).Select(v => v.ToString("F3")));
-        return $"通道: {packet.ChannelId}\n长度: {packet.ActualLength}\n前 {previewLength} 个采样值: {preview}";
+        return $"来源节点: {packet.SourceNode}\n包编号: {packet.PacketId}\n通道: {packet.ChannelId}\n长度: {packet.ActualLength}\n前 {previewLength} 个采样值: {preview}";
     }
 
     private static async Task SendAckAsync(NetworkStream stream, bool success, NetworkDataPacket packet, string message, CancellationToken ct)

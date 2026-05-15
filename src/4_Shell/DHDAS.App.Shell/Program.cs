@@ -31,10 +31,15 @@ class Program
         var role = GetOption(args, "--role", "receiver").ToLowerInvariant();
         var targetIp = GetOption(args, "--target-ip", "127.0.0.1");
         var targetPort = int.TryParse(GetOption(args, "--target-port", "5000"), out var parsedPort) ? parsedPort : 5000;
+        var listenPort = int.TryParse(GetOption(args, "--listen-port", "5000"), out var parsedListenPort) ? parsedListenPort : 5000;
         var channelId = int.TryParse(GetOption(args, "--channel", "0"), out var parsedChannel) ? parsedChannel : 0;
         var pipelineScheme = BuildPipelineScheme(role);
 
         Console.WriteLine($"[系统] 当前分布式角色: {role}");
+        if (role == "receiver")
+        {
+            Console.WriteLine($"[网络] 接收端监听端口: {listenPort}");
+        }
 
         // 1. 初始化 .NET Generic Host (后台引擎)
         IHost host = Host.CreateDefaultBuilder(args)
@@ -49,6 +54,7 @@ class Program
                     Role = role,
                     TargetIp = targetIp,
                     TargetPort = targetPort,
+                    ListenPort = listenPort,
                     ChannelId = channelId
                 });
                 services.AddSingleton<IDeviceDriver, SineWaveSimulator>();

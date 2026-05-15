@@ -24,11 +24,12 @@ public class NetworkConfigViewModel : PluginViewModelBase
     [Reactive] public int InputPort { get; set; } = 5000;
     [Reactive] public int StartChannelId { get; set; } = 0;
     [Reactive] public int EndChannelId { get; set; } = 0;
+    [Reactive] public int TestChannelId { get; set; } = 0;
 
     public bool IsSender => _runtimeOptions.IsSender;
     public bool IsReceiver => _runtimeOptions.IsReceiver;
     public string RoleText => _runtimeOptions.IsSender ? "发送端模式" : "接收端模式";
-    public string ReceiverText => "接收端正在等待发送端数据。收到数据后，请切换到“实时波形显示”查看完整曲线。";
+    public string ReceiverText => $"接收端正在监听 {_runtimeOptions.ListenPort} 端口。收到数据后，请切换到“实时波形显示”查看完整曲线。";
 
     public NetworkConfigViewModel(
         INetworkService networkService,
@@ -41,6 +42,7 @@ public class NetworkConfigViewModel : PluginViewModelBase
         InputPort = runtimeOptions.TargetPort;
         StartChannelId = runtimeOptions.ChannelId;
         EndChannelId = runtimeOptions.ChannelId;
+        TestChannelId = runtimeOptions.ChannelId;
         _statusSubscription = _networkService.LinkStatusChanged.Subscribe(new LinkStatusObserver(UpdateLinkStatus));
     }
 
@@ -81,7 +83,7 @@ public class NetworkConfigViewModel : PluginViewModelBase
 
     public void GenerateWaveform()
     {
-        _networkService.GenerateTestSinePacket(StartChannelId);
+        _networkService.GenerateTestSinePacket(TestChannelId);
     }
 
     public override void OnDeactivated()

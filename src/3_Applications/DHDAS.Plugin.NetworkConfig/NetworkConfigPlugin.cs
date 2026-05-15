@@ -68,8 +68,30 @@ public class NetworkConfigPlugin : PluginBase
 
             panel.Children.Add(addRouteButton);
 
-            var generateBtn = new Button { Content = "生成测试正弦波 (CH0)" };
-            generateBtn.Click += (s, e) => vm.GenerateWaveform();
+            var testChannelPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8
+            };
+            testChannelPanel.Children.Add(new TextBlock
+            {
+                Text = "测试通道",
+                VerticalAlignment = VerticalAlignment.Center,
+                FontWeight = Avalonia.Media.FontWeight.Bold
+            });
+            var testChannel = new TextBox
+            {
+                Text = vm.TestChannelId.ToString(),
+                Width = 80
+            };
+            testChannelPanel.Children.Add(testChannel);
+
+            var generateBtn = new Button { Content = "生成指定通道正弦波" };
+            generateBtn.Click += (s, e) =>
+            {
+                vm.TestChannelId = int.TryParse(testChannel.Text, out var parsedTestChannel) ? parsedTestChannel : 0;
+                vm.GenerateWaveform();
+            };
 
             var sendBtn = new Button { Content = "发送当前波形" };
             sendBtn.Click += (s, e) => vm.SendOnce();
@@ -80,6 +102,7 @@ public class NetworkConfigPlugin : PluginBase
                 Spacing = 8,
                 Children = { generateBtn, sendBtn }
             };
+            panel.Children.Add(testChannelPanel);
             panel.Children.Add(waveformButtons);
 
             panel.Children.Add(new TextBlock { Text = "当前路由表", FontWeight = Avalonia.Media.FontWeight.Bold });
