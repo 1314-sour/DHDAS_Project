@@ -45,6 +45,7 @@ public class NetworkConfigViewModel : PluginViewModelBase
         EndChannelId = runtimeOptions.ChannelId;
         TestChannelId = runtimeOptions.ChannelId;
         _statusSubscription = _networkService.LinkStatusChanged.Subscribe(new LinkStatusObserver(UpdateLinkStatus));
+        RestoreRuntimeState();
     }
 
     public void AddRoute()
@@ -115,6 +116,30 @@ public class NetworkConfigViewModel : PluginViewModelBase
             var index = LinkStatuses.IndexOf(existing);
             LinkStatuses[index] = status;
         });
+    }
+
+    private void RestoreRuntimeState()
+    {
+        foreach (var route in _networkService.GetRoutingTable())
+        {
+            Routes.Add(route);
+        }
+
+        foreach (var status in _networkService.GetLinkStatuses())
+        {
+            LinkStatuses.Add(status);
+        }
+
+        SelectedRoute = Routes.FirstOrDefault();
+        if (SelectedRoute != null)
+        {
+            TestChannelId = SelectedRoute.StartChannelId;
+            InputNodeName = SelectedRoute.NodeName;
+            InputIp = SelectedRoute.TargetIp;
+            InputPort = SelectedRoute.Port;
+            StartChannelId = SelectedRoute.StartChannelId;
+            EndChannelId = SelectedRoute.EndChannelId;
+        }
     }
 
     private sealed class LinkStatusObserver : IObserver<NetworkLinkStatus>

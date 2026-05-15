@@ -71,6 +71,14 @@ public class NetworkSenderNode : BasePipelineNode, INetworkService
         }
     }
 
+    public IReadOnlyList<NetworkRoute> GetRoutingTable()
+    {
+        lock (_routesLock)
+        {
+            return _routes.ToList();
+        }
+    }
+
     // 由应用层插件调用，动态更新路由
     public void UpdateConfig(IEnumerable<NetworkRoute> newRoutes) => UpdateRoutingTable(newRoutes.ToList());
 

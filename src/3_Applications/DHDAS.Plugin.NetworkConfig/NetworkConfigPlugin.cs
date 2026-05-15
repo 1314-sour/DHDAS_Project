@@ -120,6 +120,7 @@ public class NetworkConfigPlugin : PluginBase
                 vm.TestChannelId = route.StartChannelId;
                 testChannel.Text = route.StartChannelId.ToString();
             };
+            routeList.SelectedItem = vm.SelectedRoute;
             panel.Children.Add(routeList);
 
             var connectButton = new Button { Content = "连接选中路由" };

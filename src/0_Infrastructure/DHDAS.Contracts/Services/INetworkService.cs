@@ -8,6 +8,8 @@ public interface INetworkService
 
     IReadOnlyList<NetworkLinkStatus> GetLinkStatuses();
 
+    IReadOnlyList<NetworkRoute> GetRoutingTable();
+
     void UpdateRoutingTable(List<NetworkRoute> routes);
 
     Task ConnectAsync(NetworkRoute route, CancellationToken ct = default);
