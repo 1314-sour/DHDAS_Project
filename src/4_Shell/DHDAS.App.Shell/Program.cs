@@ -18,6 +18,7 @@ using DHDAS.App.Shell.ViewModels;
 using DHDAS.App.Shell.Services;
 using DHDAS.Driver.Simulator;
 using DHDAS.Infrastructure.Core.Session;
+using DHDAS.Service.Signal.Instrument;
 using DHDAS.Service.Signal.Network;
 
 namespace DHDAS.App.Shell;
@@ -38,6 +39,7 @@ class Program
                 services.AddSingleton<IDeviceDriver, SineWaveSimulator>();
                 services.AddSingleton<PluginManager>();
                 services.AddSingleton<MainWindowViewModel>();
+                services.AddChannelManagerModule();
 
                 // --- B. 管道编排器注册 ---
                 services.AddSingleton<PipelineOrchestrator>();
@@ -86,21 +88,13 @@ class Program
         // 这一步必须在 host.Start() 之前执行，确保水管在开工前连好
         var orchestrator = host.Services.GetRequiredService<PipelineOrchestrator>();
 
-        // 此列表未来可从 appsettings.json 动态读取
+        // Task 1 local test pipeline. It keeps the simulated acquisition data flowing
+        // directly into the UI so channel settings can be verified in this branch.
+        // Later integration branches can replace this with the full network/storage pipeline.
         var pipelineScheme = new List<string>
         {
-            // nameof(AcquisitionService),
-            // nameof(NetworkSenderNode),
-
-            nameof(NetworkReceiverNode),
-            nameof(StorageService),
+            nameof(AcquisitionService),
             nameof(DataPushService),
-
-
-            // nameof(AcquisitionService),
-            // nameof(StorageService),
-            // nameof(DataPushService),
-            // nameof(NetworkSenderNode),
         };
 
         try

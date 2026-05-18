@@ -1,24 +1,32 @@
-using System;
 using System.Collections.ObjectModel;
-using System.Linq;
-using ReactiveUI;
-using ReactiveUI.Fody.Helpers;
 using DHDAS.Application.Support;
 using DHDAS.Contracts.Models;
 using DHDAS.Service.Signal.Network;
+using ReactiveUI;
 
 namespace DHDAS.Plugin.NetworkConfig.ViewModels;
 
 public class NetworkConfigViewModel : PluginViewModelBase
 {
     private readonly NetworkSenderNode _senderNode;
+    private string _inputIp = "127.0.0.1";
+    private int _inputChannel;
 
     public ObservableCollection<NetworkRoute> Routes { get; } = new();
 
-    [Reactive] public string InputIp { get; set; } = "127.0.0.1";
-    [Reactive] public int InputChannel { get; set; } = 0;
+    public string InputIp
+    {
+        get => _inputIp;
+        set => this.RaiseAndSetIfChanged(ref _inputIp, value);
+    }
 
-    public NetworkConfigViewModel(NetworkSenderNode senderNode, IMessenger messenger) : base()
+    public int InputChannel
+    {
+        get => _inputChannel;
+        set => this.RaiseAndSetIfChanged(ref _inputChannel, value);
+    }
+
+    public NetworkConfigViewModel(NetworkSenderNode senderNode, IMessenger messenger)
     {
         _senderNode = senderNode;
     }

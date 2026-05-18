@@ -46,7 +46,8 @@ public class AcquisitionService : BasePipelineNode
                 ChannelId = channelId,
                 Data = poolArray,
                 ActualLength = data.Length,
-                Timestamp = DateTime.Now.Ticks
+                Timestamp = DateTime.Now.Ticks,
+                SampleRate = _driver.GetChannelSettings(channelId)?.SampleRate ?? 0
             };
 
             // 4. 创建引用计数包裹，定义回收行为

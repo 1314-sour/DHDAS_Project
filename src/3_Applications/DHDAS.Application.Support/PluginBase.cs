@@ -3,7 +3,7 @@ using Avalonia.Controls;
 
 namespace DHDAS.Application.Support;
 
-public abstract class PluginBase
+public abstract class PluginBase : IDisposable
 {
     public abstract string PluginId { get; }
     public abstract string DisplayName { get; }
@@ -11,6 +11,9 @@ public abstract class PluginBase
     public virtual int Level { get; } = 1;
     public virtual int Priority { get; } = 0;
 
-    // 核心方法：由插件自己负责创建 View 
     public abstract Control CreateView(IServiceProvider serviceProvider);
+
+    public virtual void OnLoaded(IServiceProvider serviceProvider) { }
+    public virtual void OnUnloaded() { }
+    public virtual void Dispose() => OnUnloaded();
 }

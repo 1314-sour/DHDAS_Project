@@ -1,4 +1,5 @@
 using System;
+using DHDAS.Contracts.Models;
 
 namespace DHDAS.Contracts.Drivers;
 
@@ -14,4 +15,6 @@ public interface IDeviceDriver
     // 原始数据回调（字节流或原始数组）
     // 为了简化 Demo，我们让驱动直接吐出 double[]
     event Action<int, double[]> RawDataReceived;
+    void ApplyChannelSettings(IReadOnlyList<ChannelInfo> settings);
+    ChannelInfo? GetChannelSettings(int channelId);
 }

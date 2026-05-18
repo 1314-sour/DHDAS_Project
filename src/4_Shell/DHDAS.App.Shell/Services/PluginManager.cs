@@ -3,66 +3,154 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using Avalonia.Controls;
-using DHDAS.Application.Support;
 using System.Runtime.Loader;
+using DHDAS.Application.Support;
 
 namespace DHDAS.App.Shell.Services;
 
-public class PluginManager
+public class PluginManager : IDisposable
 {
+    private static readonly HashSet<string> SharedAssemblies = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "DHDAS.Contracts",
+        "DHDAS.Application.Support",
+        "Avalonia",
+        "Avalonia.Base",
+        "Avalonia.Controls",
+        "Avalonia.Controls.DataGrid",
+        "Avalonia.Desktop",
+        "Avalonia.Markup.Xaml",
+        "Avalonia.ReactiveUI",
+        "ReactiveUI",
+        "System.Reactive",
+        "Microsoft.Extensions.DependencyInjection.Abstractions"
+    };
+
     private readonly IServiceProvider _serviceProvider;
-    private readonly List<PluginBase> _plugins = new();
+    private readonly List<PluginHandle> _handles = new();
 
     public PluginManager(IServiceProvider sp) => _serviceProvider = sp;
 
-    public void LoadPlugins()
+    public IReadOnlyList<PluginBase> LoadPlugins()
     {
-        // 获取 EXE 所在的物理路径
-        string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-        // 强制拼接 Plugins 文件夹
-        string pluginRoot = Path.Combine(baseDir, "Plugins");
+        var pluginRoot = GetPluginRoot();
+        Console.WriteLine($"[Plugin] Scanning plugin directory: {pluginRoot}");
 
-        Console.WriteLine($"[系统] 正在扫描插件目录: {pluginRoot}");
+        if (!Directory.Exists(pluginRoot))
+        {
+            Directory.CreateDirectory(pluginRoot);
+            return GetPlugins().ToArray();
+        }
 
-        if (!Directory.Exists(pluginRoot)) return;
+        var dllFiles = Directory
+            .GetFiles(pluginRoot, "DHDAS.Plugin.*.dll", SearchOption.AllDirectories)
+            .OrderBy(path => path)
+            .ToArray();
 
-        var dllFiles = Directory.GetFiles(pluginRoot, "DHDAS.Plugin.*.dll", SearchOption.AllDirectories);
         foreach (var file in dllFiles)
         {
-            try
+            if (_handles.Any(handle => string.Equals(handle.PluginPath, file, StringComparison.OrdinalIgnoreCase)))
             {
-                // 使用自定义加载上下文（见下一步）
-                var pluginAssembly = LoadPlugin(file);
-
-                var pluginType = pluginAssembly.GetTypes()
-                    .FirstOrDefault(t => typeof(PluginBase).IsAssignableFrom(t) && !t.IsAbstract);
-
-                if (pluginType != null)
-                {
-                    var plugin = (PluginBase)Activator.CreateInstance(pluginType)!;
-                    _plugins.Add(plugin);
-                    Console.WriteLine($"[系统] 已成功加载商业插件: {plugin.DisplayName} v{pluginAssembly.GetName().Version}");
-                }
+                continue;
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[系统] 插件 {Path.GetFileName(file)} 加载失败: {ex.Message}");
-            }
+
+            TryLoadPlugin(file);
+        }
+
+        return GetPlugins().ToArray();
+    }
+
+    public IEnumerable<PluginBase> GetPlugins() =>
+        _handles
+            .Select(handle => handle.Plugin)
+            .OrderBy(plugin => plugin.Priority)
+            .ThenBy(plugin => plugin.DisplayName);
+
+    public bool UnloadPlugin(PluginBase plugin)
+    {
+        var handle = _handles.FirstOrDefault(item => ReferenceEquals(item.Plugin, plugin));
+        if (handle == null)
+        {
+            return false;
+        }
+
+        _handles.Remove(handle);
+        Console.WriteLine($"[Plugin] Unloading plugin: {plugin.DisplayName}");
+
+        try
+        {
+            handle.Plugin.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Plugin] Plugin dispose failed: {plugin.DisplayName}, {ex.Message}");
+        }
+
+        handle.LoadContext.Unload();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        return true;
+    }
+
+    public void UnloadAll()
+    {
+        foreach (var plugin in GetPlugins().ToArray())
+        {
+            UnloadPlugin(plugin);
         }
     }
 
-    private Assembly LoadPlugin(string pluginPath)
+    public void Dispose() => UnloadAll();
+
+    private void TryLoadPlugin(string pluginPath)
     {
-        // 为每个插件创建一个独立的“隔离舱”
-        var loadContext = new PluginLoadContext(pluginPath);
-        return loadContext.LoadFromAssemblyName(new AssemblyName(Path.GetFileNameWithoutExtension(pluginPath)));
+        try
+        {
+            var loadContext = new PluginLoadContext(pluginPath);
+            var pluginAssembly = loadContext.LoadFromAssemblyName(
+                new AssemblyName(Path.GetFileNameWithoutExtension(pluginPath)));
+
+            var pluginType = pluginAssembly.GetTypes()
+                .FirstOrDefault(t => typeof(PluginBase).IsAssignableFrom(t) && !t.IsAbstract);
+
+            if (pluginType == null)
+            {
+                loadContext.Unload();
+                return;
+            }
+
+            var plugin = (PluginBase)Activator.CreateInstance(pluginType)!;
+            plugin.OnLoaded(_serviceProvider);
+            _handles.Add(new PluginHandle(pluginPath, plugin, loadContext));
+
+            Console.WriteLine($"[Plugin] Loaded {plugin.DisplayName} from {Path.GetFileName(pluginPath)}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Plugin] Failed to load {Path.GetFileName(pluginPath)}: {ex.Message}");
+        }
     }
 
-    // 定义一个隔离加载类
-    class PluginLoadContext : AssemblyLoadContext
+    private static string GetPluginRoot() =>
+        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Plugins");
+
+    private sealed class PluginHandle
     {
-        private AssemblyDependencyResolver _resolver;
+        public PluginHandle(string pluginPath, PluginBase plugin, AssemblyLoadContext loadContext)
+        {
+            PluginPath = pluginPath;
+            Plugin = plugin;
+            LoadContext = loadContext;
+        }
+
+        public string PluginPath { get; }
+        public PluginBase Plugin { get; }
+        public AssemblyLoadContext LoadContext { get; }
+    }
+
+    private sealed class PluginLoadContext : AssemblyLoadContext
+    {
+        private readonly AssemblyDependencyResolver _resolver;
 
         public PluginLoadContext(string pluginPath) : base(isCollectible: true)
         {
@@ -71,16 +159,13 @@ public class PluginManager
 
         protected override Assembly? Load(AssemblyName assemblyName)
         {
-            // 如果主程序已经有了（比如 Contracts, Support），就用主程序的
-            // 否则去插件目录找
-            string? assemblyPath = _resolver.ResolveAssemblyToPath(assemblyName);
-            if (assemblyPath != null)
+            if (assemblyName.Name != null && SharedAssemblies.Contains(assemblyName.Name))
             {
-                return LoadFromAssemblyPath(assemblyPath);
+                return null;
             }
-            return null;
+
+            var assemblyPath = _resolver.ResolveAssemblyToPath(assemblyName);
+            return assemblyPath != null ? LoadFromAssemblyPath(assemblyPath) : null;
         }
     }
-
-    public IEnumerable<PluginBase> GetPlugins() => _plugins;
 }

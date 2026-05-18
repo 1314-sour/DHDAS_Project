@@ -1,34 +1,89 @@
-using System;
 using System.Collections.ObjectModel;
-using System.Linq;
+using System.Reactive;
 using System.Reactive.Linq;
 using Avalonia.Controls;
-using ReactiveUI;
-using ReactiveUI.Fody.Helpers;
+using DHDAS.App.Shell.Services;
 using DHDAS.Application.Support;
+using ReactiveUI;
 
 namespace DHDAS.App.Shell.ViewModels;
 
 public class MainWindowViewModel : ReactiveObject
 {
-    // 自动发现的所有插件列表
+    private readonly PluginManager _pluginManager;
+    private PluginBase? _selectedPlugin;
+    private Control? _currentView;
+
+    public MainWindowViewModel(PluginManager pluginManager)
+    {
+        _pluginManager = pluginManager;
+        ReloadPluginsCommand = ReactiveCommand.Create(ReloadPlugins);
+        UnloadSelectedPluginCommand = ReactiveCommand.Create(UnloadSelectedPlugin);
+
+        this.WhenAnyValue(x => x.SelectedPlugin)
+            .Where(plugin => plugin != null)
+            .Subscribe(plugin =>
+            {
+                CurrentView = plugin!.CreateView(Program.ServiceProvider!);
+            });
+    }
+
     public ObservableCollection<PluginBase> Plugins { get; } = new();
 
-    // 当前选中的插件
-    [Reactive] public PluginBase? SelectedPlugin { get; set; }
+    public ReactiveCommand<Unit, Unit> ReloadPluginsCommand { get; }
+    public ReactiveCommand<Unit, Unit> UnloadSelectedPluginCommand { get; }
 
-    // 右侧展示的视图实例
-    [Reactive] public Control? CurrentView { get; set; }
-
-    public MainWindowViewModel()
+    public PluginBase? SelectedPlugin
     {
-        // 监控选中项，实现自动切换
-        this.WhenAnyValue(x => x.SelectedPlugin)
-            .Where(p => p != null)
-            .Subscribe(p =>
-            {
-                // 注意：这里调用 CreateView 传入主程序的 ServiceProvider
-                CurrentView = p!.CreateView(Program.ServiceProvider!);
-            });
+        get => _selectedPlugin;
+        set => this.RaiseAndSetIfChanged(ref _selectedPlugin, value);
+    }
+
+    public Control? CurrentView
+    {
+        get => _currentView;
+        set => this.RaiseAndSetIfChanged(ref _currentView, value);
+    }
+
+    public void ReloadPlugins()
+    {
+        var previousPluginId = SelectedPlugin?.PluginId;
+        Plugins.Clear();
+
+        foreach (var plugin in _pluginManager.LoadPlugins())
+        {
+            Plugins.Add(plugin);
+        }
+
+        SelectedPlugin = Plugins.FirstOrDefault(plugin => plugin.PluginId == previousPluginId)
+            ?? Plugins.FirstOrDefault();
+    }
+
+    private void UnloadSelectedPlugin()
+    {
+        var plugin = SelectedPlugin;
+        if (plugin == null)
+        {
+            return;
+        }
+
+        DeactivateCurrentView();
+        CurrentView = null;
+        SelectedPlugin = null;
+
+        if (_pluginManager.UnloadPlugin(plugin))
+        {
+            Plugins.Remove(plugin);
+        }
+
+        SelectedPlugin = Plugins.FirstOrDefault();
+    }
+
+    private void DeactivateCurrentView()
+    {
+        if (CurrentView?.DataContext is PluginViewModelBase viewModel)
+        {
+            viewModel.OnDeactivated();
+        }
     }
 }

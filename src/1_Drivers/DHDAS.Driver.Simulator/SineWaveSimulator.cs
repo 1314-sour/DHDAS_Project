@@ -1,19 +1,40 @@
 using System;
-using System.Timers;
 using DHDAS.Contracts.Drivers;
+using DHDAS.Contracts.Models;
 
 namespace DHDAS.Driver.Simulator;
 
 public class SineWaveSimulator : IDeviceDriver, IDisposable
 {
-    public string DeviceName => "虚拟正弦波发生器";
+    public string DeviceName => "Virtual Sine Wave Generator";
     public event Action<int, double[]>? RawDataReceived;
 
+    public const int ChannelCapacity = 2048;
+
+    private const int SampleRate = 1000;
+    private const int BatchSize = 100;
+    private readonly object _settingsLock = new();
+    private readonly Dictionary<int, ChannelInfo> _settings = new();
     private System.Timers.Timer? _timer;
-    private double _phase = 0;
-    private const int ChannelCount = 8;     // 模拟 8 个通道
-    private const int SampleRate = 1000;    // 采样率 1000Hz
-    private const int BatchSize = 100;      // 每 100ms 发送一次包
+    private double _phase;
+
+    public SineWaveSimulator()
+    {
+        for (int channelId = 0; channelId < ChannelCapacity; channelId++)
+        {
+            _settings[channelId] = new ChannelInfo
+            {
+                ChannelId = channelId,
+                IsEnabled = channelId < 8,
+                ChannelName = $"CH{channelId + 1:0000}",
+                Unit = "V",
+                GainDb = 0,
+                Offset = 0,
+                InputRange = "+/-10V",
+                SampleRate = SampleRate
+            };
+        }
+    }
 
     public void Open()
     {
@@ -22,34 +43,71 @@ public class SineWaveSimulator : IDeviceDriver, IDisposable
         _timer.Start();
     }
 
-    // OnTimerElapsed 内部
+    public void ApplyChannelSettings(IReadOnlyList<ChannelInfo> settings)
+    {
+        lock (_settingsLock)
+        {
+            foreach (var channel in settings)
+            {
+                if (channel.ChannelId is >= 0 and < ChannelCapacity)
+                {
+                    _settings[channel.ChannelId] = channel;
+                }
+            }
+        }
+    }
+
+    public ChannelInfo? GetChannelSettings(int channelId)
+    {
+        lock (_settingsLock)
+        {
+            return _settings.TryGetValue(channelId, out var channel) ? channel : null;
+        }
+    }
+
     private void OnTimerElapsed(object? sender, System.Timers.ElapsedEventArgs e)
     {
-        for (int ch = 0; ch < ChannelCount; ch++)
+        ChannelInfo[] activeChannels;
+        lock (_settingsLock)
+        {
+            activeChannels = _settings.Values
+                .Where(channel => channel.IsEnabled)
+                .OrderBy(channel => channel.ChannelId)
+                .ToArray();
+        }
+
+        foreach (var channel in activeChannels)
         {
             double[] buffer = new double[BatchSize];
-            // 临时记录本次循环的起始相位，保证 8 个通道相位对齐
             double currentPhase = _phase;
+            double amplitude = Math.Pow(10, channel.GainDb / 20.0);
+            double freq = 2 + channel.ChannelId * 0.2;
 
             for (int i = 0; i < BatchSize; i++)
             {
-                // 降低频率到 2Hz，采样率 1000 下波形更明显
-                double freq = 2;
-                buffer[i] = Math.Sin(2 * Math.PI * freq * currentPhase);
-                currentPhase += 1.0 / SampleRate;
+                buffer[i] = Math.Sin(2 * Math.PI * freq * currentPhase) * amplitude + channel.Offset;
+                currentPhase += 1.0 / Math.Max(channel.SampleRate, 1);
             }
-            RawDataReceived?.Invoke(ch, buffer);
 
-            // 最后一个通道更新完后，正式同步全局相位
-            if (ch == ChannelCount - 1) _phase = currentPhase;
+            RawDataReceived?.Invoke(channel.ChannelId, buffer);
+
+            if (channel.ChannelId == activeChannels[^1].ChannelId)
+            {
+                _phase = currentPhase;
+            }
         }
-        if (_phase > 1000) _phase = 0;
+
+        if (_phase > 1000)
+        {
+            _phase = 0;
+        }
     }
 
     public void Close()
     {
         _timer?.Stop();
         _timer?.Dispose();
+        _timer = null;
     }
 
     public void Dispose() => Close();
