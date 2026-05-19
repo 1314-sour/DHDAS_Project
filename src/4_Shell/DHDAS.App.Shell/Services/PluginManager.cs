@@ -13,36 +13,58 @@ public class PluginManager
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly List<PluginBase> _plugins = new();
+    private bool _mounted;
 
-    public PluginManager(IServiceProvider sp) => _serviceProvider = sp;
+    public PluginManager(IServiceProvider sp, IEnumerable<PluginBase> plugins)
+    {
+        _serviceProvider = sp;
+        _plugins.AddRange(plugins);
+    }
 
     public void LoadPlugins()
     {
-        // 获取 EXE 所在的物理路径
-        string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-        // 强制拼接 Plugins 文件夹
-        string pluginRoot = Path.Combine(baseDir, "Plugins");
+        if (_plugins.Count == 0)
+        {
+            _plugins.AddRange(DiscoverPlugins(GetDefaultPluginRoot()));
+        }
 
+        if (_mounted) return;
+
+        foreach (var plugin in _plugins.OrderBy(p => p.Priority))
+        {
+            plugin.Initialize(_serviceProvider);
+            plugin.Mount(_serviceProvider);
+        }
+
+        _mounted = true;
+    }
+
+    public static string GetDefaultPluginRoot()
+    {
+        return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Plugins");
+    }
+
+    public static IReadOnlyList<PluginBase> DiscoverPlugins(string pluginRoot)
+    {
         Console.WriteLine($"[系统] 正在扫描插件目录: {pluginRoot}");
 
-        if (!Directory.Exists(pluginRoot)) return;
+        var plugins = new List<PluginBase>();
+        if (!Directory.Exists(pluginRoot)) return plugins;
 
         var dllFiles = Directory.GetFiles(pluginRoot, "DHDAS.Plugin.*.dll", SearchOption.AllDirectories);
         foreach (var file in dllFiles)
         {
             try
             {
-                // 使用自定义加载上下文（见下一步）
                 var pluginAssembly = LoadPlugin(file);
+                var pluginTypes = pluginAssembly.GetTypes()
+                    .Where(t => typeof(PluginBase).IsAssignableFrom(t) && !t.IsAbstract);
 
-                var pluginType = pluginAssembly.GetTypes()
-                    .FirstOrDefault(t => typeof(PluginBase).IsAssignableFrom(t) && !t.IsAbstract);
-
-                if (pluginType != null)
+                foreach (var pluginType in pluginTypes)
                 {
                     var plugin = (PluginBase)Activator.CreateInstance(pluginType)!;
-                    _plugins.Add(plugin);
-                    Console.WriteLine($"[系统] 已成功加载商业插件: {plugin.DisplayName} v{pluginAssembly.GetName().Version}");
+                    plugins.Add(plugin);
+                    Console.WriteLine($"[系统] 已发现插件: {plugin.DisplayName} v{plugin.Version}");
                 }
             }
             catch (Exception ex)
@@ -50,11 +72,30 @@ public class PluginManager
                 Console.WriteLine($"[系统] 插件 {Path.GetFileName(file)} 加载失败: {ex.Message}");
             }
         }
+
+        return plugins;
     }
 
-    private Assembly LoadPlugin(string pluginPath)
+    public void Shutdown()
     {
-        // 为每个插件创建一个独立的“隔离舱”
+        foreach (var plugin in _plugins.OrderByDescending(p => p.Priority))
+        {
+            try
+            {
+                plugin.Unmount();
+                plugin.Destroy();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[系统] 插件 {plugin.DisplayName} 卸载失败: {ex.Message}");
+            }
+        }
+
+        _mounted = false;
+    }
+
+    private static Assembly LoadPlugin(string pluginPath)
+    {
         var loadContext = new PluginLoadContext(pluginPath);
         return loadContext.LoadFromAssemblyName(new AssemblyName(Path.GetFileNameWithoutExtension(pluginPath)));
     }

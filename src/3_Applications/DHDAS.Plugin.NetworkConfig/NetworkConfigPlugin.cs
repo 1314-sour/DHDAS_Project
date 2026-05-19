@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls; // 解决 Control 找不到的问题
 using Avalonia.Controls.Templates;
@@ -6,6 +7,8 @@ using Avalonia.Layout;
 using Microsoft.Extensions.DependencyInjection;
 using DHDAS.Application.Support;
 using DHDAS.Contracts.Models;
+using DHDAS.Service.Signal;
+using DHDAS.Service.Signal.Network;
 using DHDAS.Plugin.NetworkConfig.ViewModels;
 
 namespace DHDAS.Plugin.NetworkConfig;
@@ -14,8 +17,19 @@ public class NetworkConfigPlugin : PluginBase
 {
     public override string PluginId => "NETWORK_CONFIG";
     public override string DisplayName => "分布式路由配置";
+    public override string Version => "1.0.0";
     public override int Level => 2;
     public override string ParentId => "SYSTEM_SETTINGS";
+    public override IReadOnlyList<string> PipelineNodeIds => new[]
+    {
+        nameof(NetworkSenderNode),
+        nameof(NetworkReceiverNode)
+    };
+
+    public override void RegisterServices(IServiceCollection services, PluginRegistrationContext context)
+    {
+        services.AddDistributionModule(context.ActivePipelineNodes);
+    }
 
     public override Control CreateView(IServiceProvider sp)
     {

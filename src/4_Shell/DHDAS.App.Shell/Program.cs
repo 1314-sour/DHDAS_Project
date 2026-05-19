@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using DHDAS.Contracts.Models;
 using DHDAS.Contracts.Services;
 using DHDAS.Contracts.Drivers;
+using DHDAS.Application.Support;
 using DHDAS.Service.Signal;
 using DHDAS.App.Shell.ViewModels;
 using DHDAS.App.Shell.Services;
@@ -33,7 +34,17 @@ class Program
         var targetPort = int.TryParse(GetOption(args, "--target-port", "5000"), out var parsedPort) ? parsedPort : 5000;
         var listenPort = int.TryParse(GetOption(args, "--listen-port", "5000"), out var parsedListenPort) ? parsedListenPort : 5000;
         var channelId = int.TryParse(GetOption(args, "--channel", "0"), out var parsedChannel) ? parsedChannel : 0;
-        var pipelineScheme = BuildPipelineScheme(role);
+        var runtimeOptions = new DistributedRuntimeOptions
+        {
+            Role = role,
+            TargetIp = targetIp,
+            TargetPort = targetPort,
+            ListenPort = listenPort,
+            ChannelId = channelId
+        };
+        var discoveredPlugins = PluginManager.DiscoverPlugins(PluginManager.GetDefaultPluginRoot());
+        var pipelineScheme = BuildPipelineScheme(role, discoveredPlugins);
+        var pluginContext = new PluginRegistrationContext(runtimeOptions, pipelineScheme);
 
         Console.WriteLine($"[系统] 当前分布式角色: {role}");
         if (role == "receiver")
@@ -49,15 +60,14 @@ class Program
                 services.AddSingleton<SessionManager>();
                 services.AddSingleton<IDistributedFeedbackService, DistributedFeedbackService>();
                 services.AddSingleton<IWaveformSnapshotService, WaveformSnapshotService>();
-                services.AddSingleton(new DistributedRuntimeOptions
-                {
-                    Role = role,
-                    TargetIp = targetIp,
-                    TargetPort = targetPort,
-                    ListenPort = listenPort,
-                    ChannelId = channelId
-                });
+                services.AddSingleton(runtimeOptions);
                 services.AddSingleton<IDeviceDriver, SineWaveSimulator>();
+                foreach (var plugin in discoveredPlugins)
+                {
+                    services.AddSingleton<PluginBase>(plugin);
+                    plugin.RegisterServices(services, pluginContext);
+                }
+
                 services.AddSingleton<PluginManager>();
                 services.AddSingleton<MainWindowViewModel>();
 
@@ -65,8 +75,6 @@ class Program
                 services.AddSingleton<PipelineOrchestrator>();
 
                 // --- C. 业务节点注册 (关键：双重身份绑定) ---
-
-                services.AddDistributionModule(pipelineScheme);
 
                 services.AddSingleton<DHDAS.Application.Support.IMessenger, DHDAS.Application.Support.AppMessenger>();
 
@@ -127,6 +135,7 @@ class Program
         }
         finally
         {
+            host.Services.GetRequiredService<PluginManager>().Shutdown();
             // 优雅退出：通知所有节点停止工作并释放资源
             host.StopAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
             host.Dispose();
@@ -153,8 +162,18 @@ class Program
         return builder;
     }
 
-    private static List<string> BuildPipelineScheme(string role)
+    private static List<string> BuildPipelineScheme(string role, IReadOnlyList<PluginBase> plugins)
     {
+        var hasDistributionPlugin = plugins.Any(p =>
+            p.PipelineNodeIds.Contains(nameof(NetworkSenderNode)) ||
+            p.PipelineNodeIds.Contains(nameof(NetworkReceiverNode)));
+
+        if (!hasDistributionPlugin)
+        {
+            Console.WriteLine("[插件] 未发现分布式业务插件，分布式管道不挂载。");
+            return new List<string>();
+        }
+
         return role switch
         {
             "sender" => new List<string>
