@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\0_Infrastructure\DHDAS.Contracts\DHDAS.Contracts.csproj" />
+    <ProjectReference Include="..\DHDAS.Application.Support\DHDAS.Application.Support.csproj" />
+    <!-- 需要引用服务层，以便 ViewModel 注入 NetworkSenderNode -->
+    <ProjectReference Include="..\..\2_Services\DHDAS.Service.Signal\DHDAS.Service.Signal.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.0.10" />
+    <PackageReference Include="Avalonia.ReactiveUI" Version="11.0.10" />
+    <PackageReference Include="MessagePack" Version="3.1.4" />
+  </ItemGroup>
+
+  <!-- 自动化拷贝到主程序目录 -->
+  <Target Name="CopyPluginAfterBuild" AfterTargets="Build">
+    <ItemGroup>
+      <PluginFiles Include="$(OutputPath)DHDAS.Plugin.NetworkConfig.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PluginFiles)" 
+          DestinationFolder="$(MSBuildProjectDirectory)\..\..\4_Shell\DHDAS.App.Shell\bin\$(Configuration)\net6.0\win-x64\Plugins\" 
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

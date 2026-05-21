@@ -1,0 +1,39 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:DHDAS.App.Shell.ViewModels"
+        x:Class="DHDAS.App.Shell.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="DHDAS 插件宿主" Width="960" Height="560">
+
+    <Grid ColumnDefinitions="220,*">
+        <Border Grid.Column="0" Background="#2b2b2b">
+            <DockPanel LastChildFill="True">
+                <StackPanel DockPanel.Dock="Top" Margin="10" Spacing="8">
+                    <TextBlock Text="功能模块" Foreground="White" FontWeight="Bold"/>
+                    <Grid ColumnDefinitions="*,*">
+                        <Button Grid.Column="0"
+                                Content="插入"
+                                Margin="0,0,4,0"
+                                Command="{Binding ReloadPluginsCommand}"/>
+                        <Button Grid.Column="1"
+                                Content="卸载"
+                                Margin="4,0,0,0"
+                                Command="{Binding UnloadSelectedPluginCommand}"/>
+                    </Grid>
+                </StackPanel>
+
+                <ListBox ItemsSource="{Binding Plugins}"
+                         SelectedItem="{Binding SelectedPlugin}"
+                         Background="Transparent">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding DisplayName}" Margin="5"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <ContentControl Grid.Column="1" Content="{Binding CurrentView}" Margin="10"/>
+    </Grid>
+</Window>
