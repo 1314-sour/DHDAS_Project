@@ -16,6 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\0_Infrastructure\DHDAS.Contracts\DHDAS.Contracts.csproj" />
     <ProjectReference Include="..\..\0_Infrastructure\DHDAS.Infrastructure.Core\DHDAS.Infrastructure.Core.csproj" />
+    <ProjectReference Include="..\..\3_Applications\DHDAS.Application.Support\DHDAS.Application.Support.csproj" />
   </ItemGroup>
 
 </Project>

@@ -20,6 +20,7 @@ using DHDAS.Driver.Simulator;
 using DHDAS.Infrastructure.Core.Session;
 using DHDAS.Service.Signal.Instrument;
 using DHDAS.Service.Signal.Network;
+using DHDAS.Service.Signal.Project;
 
 namespace DHDAS.App.Shell;
 
@@ -40,6 +41,8 @@ class Program
                 services.AddSingleton<PluginManager>();
                 services.AddSingleton<MainWindowViewModel>();
                 services.AddChannelManagerModule();
+                services.AddSingleton<DHDAS.Application.Support.IMessenger, DHDAS.Application.Support.AppMessenger>();
+                services.AddProjectManagerModule();
 
                 // --- B. 管道编排器注册 ---
                 services.AddSingleton<PipelineOrchestrator>();
@@ -55,8 +58,6 @@ class Program
                 services.AddSingleton<NetworkReceiverNode>();
                 services.AddSingleton<IPipelineNode>(sp => sp.GetRequiredService<NetworkReceiverNode>());
                 services.AddHostedService(sp => sp.GetRequiredService<NetworkReceiverNode>());
-
-                services.AddSingleton<DHDAS.Application.Support.IMessenger, DHDAS.Application.Support.AppMessenger>();
 
                 // 注册数据采集节点
                 services.AddSingleton<AcquisitionService>();
@@ -95,6 +96,7 @@ class Program
         {
             nameof(AcquisitionService),
             nameof(DataPushService),
+            nameof(StorageService),
         };
 
         try

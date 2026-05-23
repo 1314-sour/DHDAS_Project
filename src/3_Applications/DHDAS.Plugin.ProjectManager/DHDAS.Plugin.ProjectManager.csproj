@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\0_Infrastructure\DHDAS.Contracts\DHDAS.Contracts.csproj" />
+    <ProjectReference Include="..\DHDAS.Application.Support\DHDAS.Application.Support.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.0.10" />
+    <PackageReference Include="Avalonia.ReactiveUI" Version="11.0.10" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="6.0.0" />
+    <PackageReference Include="System.Reactive" Version="6.1.0" />
+  </ItemGroup>
+
+  <Target Name="CopyPluginAfterBuild" AfterTargets="Build">
+    <ItemGroup>
+      <PluginFiles Include="$(OutputPath)DHDAS.Plugin.ProjectManager.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PluginFiles)"
+          DestinationFolder="$(MSBuildProjectDirectory)\..\..\4_Shell\DHDAS.App.Shell\bin\$(Configuration)\net6.0\win-x64\Plugins\"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>
